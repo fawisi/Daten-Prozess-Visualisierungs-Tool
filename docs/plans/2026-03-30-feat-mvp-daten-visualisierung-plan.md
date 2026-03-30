@@ -1,7 +1,7 @@
 ---
 title: "feat: MVP Daten & Prozess Visualisierungs-Tool"
 type: feat
-status: active
+status: completed
 date: 2026-03-30
 simplified: 2026-03-30
 ---
@@ -177,38 +177,38 @@ Ziel: MCP Server funktioniert in Claude Code, Agent kann Schemas erstellen und l
 
 **Dependencies:** `@modelcontextprotocol/server`, `@modelcontextprotocol/node`, `zod`, `tsup`
 
-- [ ] `package.json` + `tsconfig.json` (strict: true)
-- [ ] `src/schema.ts`:
+- [x] `package.json` + `tsconfig.json` (strict: true)
+- [x] `src/schema.ts`:
   - `SAFE_IDENTIFIER` Regex als Zod-Refinement: `/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`
   - `z.record(SAFE_IDENTIFIER, TableSchema)` fuer Tables
   - `z.enum()` fuer RelationType
   - Alle Types via `z.infer<>` exportieren
-- [ ] `src/store.ts`:
+- [x] `src/store.ts`:
   - `load()`, `save()` mit atomic writes (tmp mit `randomUUID()` + rename)
   - ESM-kompatibel (`node:` Imports)
   - Leeres Schema als Default wenn Datei nicht existiert
   - Auto-Create bei erstem Write
-- [ ] `src/tools.ts`:
+- [x] `src/tools.ts`:
   - 7 Tools mit `server.registerTool()`
   - `.describe()` auf jedem Zod-Feld
   - `diagram_remove_table`: Cascade-Delete aller zugehoerigen Relations
   - `diagram_get_schema`: Compact JSON, ohne Positions
-- [ ] `src/server.ts`:
+- [x] `src/server.ts`:
   - McpServer init + StdioServerTransport
   - `--file` via `node:util/parseArgs` (Default: `./schema.erd.json`)
-- [ ] `tsup.config.ts`: `format: ['cjs']`, `target: 'node20'`, `dts: false`
-- [ ] **Tests (Vitest):**
+- [x] `tsup.config.ts`: `format: ['cjs']`, `target: 'node20'`, `dts: false`
+- [x] **Tests (Vitest):**
   - Unit: `schema.ts` — Validation Edge Cases
   - Unit: `store.ts` — load, save, missing file, corrupt file
   - Integration: MCP Server als Child-Process → Tool-Calls → File-Output pruefen
 
 **Akzeptanzkriterien:**
-- [ ] `npx daten-viz-mcp` startet MCP Server via stdio
-- [ ] Claude kann `diagram_create_table` aufrufen und bekommt Bestaetigung
-- [ ] `.erd.json` wird korrekt geschrieben
-- [ ] `diagram_get_schema` gibt kompaktes JSON zurueck
-- [ ] `diagram_remove_table` entfernt zugehoerige Relations
-- [ ] Fehlerhafte Inputs geben klare Fehlermeldungen
+- [x] `npx daten-viz-mcp` startet MCP Server via stdio
+- [x] Claude kann `diagram_create_table` aufrufen und bekommt Bestaetigung
+- [x] `.erd.json` wird korrekt geschrieben
+- [x] `diagram_get_schema` gibt kompaktes JSON zurueck
+- [x] `diagram_remove_table` entfernt zugehoerige Relations
+- [x] Fehlerhafte Inputs geben klare Fehlermeldungen
 
 #### Phase 2: Browser Preview mit Live Sync
 
@@ -216,69 +216,69 @@ Ziel: Schema im Browser als ER-Diagramm anzeigen, Live-Updates wenn der Agent Ae
 
 **Neue Dependencies:** `@xyflow/react`, `elkjs`, `vite`, `@vitejs/plugin-react`, `chokidar`, `ws`
 
-- [ ] `src/preview/canvas.css` — Dark Blueprint Theme (CSS Custom Properties)
+- [x] `src/preview/canvas.css` — Dark Blueprint Theme (CSS Custom Properties)
   - Design Spec: `docs/plans/2026-03-30-phase2-browser-preview-design-spec.md`
   - Near-black Canvas (#0B0E14), Cyan Accents, Amber fuer Primary Keys
   - JetBrains Mono als Monospace-Font
-- [ ] `src/preview/App.tsx` — React Flow Canvas mit MiniMap, Controls, Background (Dots)
+- [x] `src/preview/App.tsx` — React Flow Canvas mit MiniMap, Controls, Background (Dots)
   - `nodeTypes` und `edgeTypes` als stabile Referenzen AUSSERHALB der Komponente
-- [ ] `src/preview/components/TableNode.tsx` — Custom Node (React.memo):
+- [x] `src/preview/components/TableNode.tsx` — Custom Node (React.memo):
   - Header mit Tabellenname, Rows fuer Columns (Name | Type | PK/Nullable)
   - PK-Rows mit Amber-Hintergrund
-- [ ] `src/preview/components/RelationEdge.tsx` — smoothstep Edge mit Kardinalitaet (`1 : N`)
-- [ ] `src/preview/layout/elk-layout.ts`:
+- [x] `src/preview/components/RelationEdge.tsx` — smoothstep Edge mit Kardinalitaet (`1 : N`)
+- [x] `src/preview/layout/elk-layout.ts`:
   - ELK `layered` Algorithm (main thread, kein Web Worker)
   - Nur Nodes ohne bestehende Position layouten
-- [ ] `src/preview/vite-plugin.ts`:
+- [x] `src/preview/vite-plugin.ts`:
   - WebSocket an Vites HTTP Server (path `/__daten-viz-ws`)
   - Chokidar watch **nur auf `.erd.json`** (nicht `.erd.pos.json` — Browser kennt seine Positions)
   - Debounce: 300ms auf File-Watch-Events
   - Vite an `127.0.0.1` binden
-- [ ] `src/preview/hooks/useDiagramSync.ts`:
+- [x] `src/preview/hooks/useDiagramSync.ts`:
   - WS Client Hook
   - Auto-Reconnect mit fixem 2s Interval
   - Full Reload bei Reconnect (beide Dateien neu laden)
   - Globaler 500ms Debounce auf Position-Writes nach `.erd.pos.json`
-- [ ] Leerer-Canvas Empty-State mit MCP-Tool-Syntax als Hint
+- [x] Leerer-Canvas Empty-State mit MCP-Tool-Syntax als Hint
 
 **Akzeptanzkriterien:**
-- [ ] `npx daten-viz serve` zeigt ER-Diagramm im Browser
-- [ ] Dark Blueprint Aesthetic erkennbar
-- [ ] Auto-Layout positioniert Tabellen sauber (ELK layered)
-- [ ] Tabellen sind draggbar, Positionen werden in `.erd.pos.json` gespeichert
-- [ ] MCP-Aenderungen erscheinen innerhalb von <1s im Browser
-- [ ] Kein Feedback-Loop (Chokidar watched nur `.erd.json`)
+- [x] `npx daten-viz serve` zeigt ER-Diagramm im Browser
+- [x] Dark Blueprint Aesthetic erkennbar
+- [x] Auto-Layout positioniert Tabellen sauber (ELK layered)
+- [x] Tabellen sind draggbar, Positionen werden in `.erd.pos.json` gespeichert
+- [x] MCP-Aenderungen erscheinen innerhalb von <1s im Browser
+- [x] Kein Feedback-Loop (Chokidar watched nur `.erd.json`)
 
 #### Phase 3: Mermaid Export
 
 Ziel: Schema als Mermaid exportieren fuer Dokumentation und Sharing.
 
-- [ ] `src/export/mermaid.ts` — Internal → Mermaid erDiagram Syntax
+- [x] `src/export/mermaid.ts` — Internal → Mermaid erDiagram Syntax
   - Sortierte Table-Keys und Relations fuer deterministische Git-Diffs
-- [ ] `diagram_export_mermaid` MCP Tool
-- [ ] CLI: `node dist/export-mermaid.js schema.erd.json`
+- [x] `diagram_export_mermaid` MCP Tool
+- [x] CLI: `node dist/export-mermaid.js schema.erd.json`
 
 **Akzeptanzkriterien:**
-- [ ] Export produziert valides Mermaid das in GitHub/GitLab rendert
-- [ ] Agent kann `diagram_export_mermaid` aufrufen
+- [x] Export produziert valides Mermaid das in GitHub/GitLab rendert
+- [x] Agent kann `diagram_export_mermaid` aufrufen
 
 ## Acceptance Criteria
 
 ### Functional Requirements
 
-- [ ] MCP Server laeuft via stdio und ist in Claude Desktop/Code konfigurierbar
-- [ ] 7 MCP Tools funktionieren korrekt (CRUD + Schema lesen)
-- [ ] Browser Preview zeigt ER-Diagramm mit Dark Blueprint Aesthetic
-- [ ] Live-Updates: MCP-Aenderungen erscheinen innerhalb von 1 Sekunde im Browser
-- [ ] Auto-Layout mit ELK.js
-- [ ] Export zu Mermaid produziert valide Syntax
+- [x] MCP Server laeuft via stdio und ist in Claude Desktop/Code konfigurierbar
+- [x] 7 MCP Tools funktionieren korrekt (CRUD + Schema lesen)
+- [x] Browser Preview zeigt ER-Diagramm mit Dark Blueprint Aesthetic
+- [x] Live-Updates: MCP-Aenderungen erscheinen innerhalb von 1 Sekunde im Browser
+- [x] Auto-Layout mit ELK.js
+- [x] Export zu Mermaid produziert valide Syntax
 
 ### Non-Functional Requirements
 
-- [ ] Lokal: Kein Netzwerk-Traffic, keine Cloud-Abhaengigkeit
-- [ ] Performance: Fluessig mit bis zu 50 Tabellen. Optimierung spaeter bei Bedarf.
-- [ ] TypeScript strict mode
-- [ ] Zod-Validation auf MCP Tool Inputs und File Load
+- [x] Lokal: Kein Netzwerk-Traffic, keine Cloud-Abhaengigkeit
+- [x] Performance: Fluessig mit bis zu 50 Tabellen. Optimierung spaeter bei Bedarf.
+- [x] TypeScript strict mode
+- [x] Zod-Validation auf MCP Tool Inputs und File Load
 
 ## Architektur-Entscheidungen
 
