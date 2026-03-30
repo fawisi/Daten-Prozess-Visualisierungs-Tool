@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { DiagramStore } from './store.js';
 import { SafeIdentifier, ColumnType, RelationType } from './schema.js';
+import { toMermaid } from './export/mermaid.js';
 import type { Diagram, Column } from './schema.js';
 
 function schemaSummary(d: Diagram): string {
@@ -271,6 +272,26 @@ export function registerTools(server: McpServer, store: DiagramStore) {
     async () => {
       const diagram = await store.load();
       return textResult(JSON.stringify(diagram, null, 2));
+    }
+  );
+
+  // --- diagram_export_mermaid ---
+  server.registerTool(
+    'diagram_export_mermaid',
+    {
+      description:
+        'Export the current ER diagram as Mermaid erDiagram syntax for documentation',
+      inputSchema: z.object({}),
+      annotations: {
+        readOnlyHint: true,
+      },
+    },
+    async () => {
+      const diagram = await store.load();
+      if (Object.keys(diagram.tables).length === 0) {
+        return textResult('Schema is empty. Create tables first.');
+      }
+      return textResult(toMermaid(diagram));
     }
   );
 }

@@ -4,8 +4,7 @@
   "description": "Agent-native MCP server for ER diagram visualization",
   "type": "module",
   "bin": {
-    "daten-viz-mcp": "./dist/server.cjs",
-    "daten-viz": "./dist/cli.cjs"
+    "daten-viz-mcp": "./dist/server.cjs"
   },
   "scripts": {
     "build": "tsup",

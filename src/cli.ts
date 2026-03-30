@@ -1,4 +1,7 @@
 import { parseArgs } from 'node:util';
+import { spawn } from 'node:child_process';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const { positionals } = parseArgs({
   allowPositionals: true,
@@ -8,10 +11,18 @@ const { positionals } = parseArgs({
 const command = positionals[0];
 
 if (command === 'serve') {
-  // Phase 2: Will launch Vite dev server
-  const { startPreview } = await import('./preview/start-preview.js');
   const fileArg = positionals[1] || './schema.erd.json';
-  await startPreview(fileArg);
+  const absFile = resolve(fileArg);
+
+  // Spawn vite with the project's vite.config.ts
+  const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const child = spawn('npx', ['vite', '--config', resolve(pkgRoot, 'vite.config.ts')], {
+    cwd: pkgRoot,
+    stdio: 'inherit',
+    env: { ...process.env, DATEN_VIZ_FILE: absFile },
+  });
+
+  child.on('exit', (code) => process.exit(code ?? 0));
 } else {
   process.stderr.write(
     `daten-viz - ER Diagram Visualization Tool

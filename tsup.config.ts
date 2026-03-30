@@ -4,7 +4,6 @@ export default defineConfig([
   {
     entry: {
       server: 'src/server.ts',
-      cli: 'src/cli.ts',
       'export-mermaid': 'src/export/mermaid-cli.ts',
     },
     format: ['cjs'],
