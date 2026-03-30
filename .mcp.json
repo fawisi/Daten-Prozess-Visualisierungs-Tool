@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "daten-viz": {
+      "command": "node",
+      "args": ["dist/server.cjs", "--file", "./schema.erd.json", "--bpmn-file", "./process.bpmn.json"],
+      "cwd": "/Users/fabianwillisimon/Documents/Claude_Code/Daten_Prozess_Visualisierungs_Tool"
+    }
+  }
+}

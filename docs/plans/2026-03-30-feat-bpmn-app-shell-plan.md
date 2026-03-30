@@ -1,7 +1,7 @@
 ---
 title: "feat: BPMN Prozess-Diagramme + App-Shell mit shadcn/ui"
 type: feat
-status: active
+status: completed
 date: 2026-03-30
 brainstorm: docs/brainstorms/2026-03-30-bpmn-prozess-diagramme-brainstorm.md
 ---
@@ -206,134 +206,134 @@ shadcn Components: `sidebar`, `tabs`, `resizable`, `label`, `input`, `separator`
 
 Ziel: Bestehende ER-Preview in eine shadcn App-Shell einbetten. Sidebar, Tabs, Dark Theme.
 
-- [ ] Tailwind v4 + shadcn/ui initialisieren
+- [x] Tailwind v4 + shadcn/ui initialisieren
   - `npm install tailwindcss @tailwindcss/vite class-variance-authority clsx tailwind-merge lucide-react`
   - `npx shadcn@latest init` (Vite template, `rsc: false`, dark theme)
   - `vite.config.ts`: Tailwind Plugin hinzufuegen, `@` Alias
-- [ ] shadcn Components installieren
+- [x] shadcn Components installieren
   - `npx shadcn@latest add sidebar tabs resizable label input separator scroll-area`
-- [ ] Dark Blueprint Theme auf shadcn migrieren
+- [x] Dark Blueprint Theme auf shadcn migrieren
   - `canvas.css` Custom Properties -> shadcn OKLCH Variables in `.dark`
   - Blueprint-Farben: `--background: oklch(0.12 0.01 250)` (#0B0E14)
   - React Flow Overrides beibehalten, aber auf Tailwind Classes umstellen wo moeglich
   - `document.documentElement.classList.add('dark')` in `main.tsx`
-- [ ] App-Shell Layout bauen
+- [x] App-Shell Layout bauen
   - `src/preview/App.tsx`: `SidebarProvider` + `ResizablePanelGroup`
   - `src/preview/components/shell/AppSidebar.tsx`: File-Browser (hardcoded erstmal)
   - `src/preview/components/shell/DiagramTabs.tsx`: Tab-Leiste
   - React Flow Canvas in `ResizablePanel` mit `h-full w-full` + `min-h-0`
-- [ ] Bestehende ERD-Preview in App-Shell integrieren
+- [x] Bestehende ERD-Preview in App-Shell integrieren
   - ERD-Canvas als Default-Tab
   - `StatusIndicator` in die Shell-Footer verschieben
   - Sicherstellen dass Drag, Zoom, MiniMap weiterhin funktionieren
-- [ ] Tests: Bestehende 20 Tests muessen weiterhin passen
+- [x] Tests: Bestehende 20 Tests muessen weiterhin passen
 
 **Akzeptanzkriterien Phase 1:**
-- [ ] shadcn App-Shell mit Sidebar und Tabs sichtbar
-- [ ] ERD-Diagramm rendert korrekt im Canvas-Bereich
-- [ ] Dark Blueprint Aesthetic bleibt erhalten
-- [ ] WebSocket Live-Sync funktioniert weiterhin
-- [ ] Alle 20 bestehenden Tests passen
+- [x] shadcn App-Shell mit Sidebar und Tabs sichtbar
+- [x] ERD-Diagramm rendert korrekt im Canvas-Bereich
+- [x] Dark Blueprint Aesthetic bleibt erhalten
+- [x] WebSocket Live-Sync funktioniert weiterhin
+- [x] Alle 20 bestehenden Tests passen
 
 ### Phase 2: BPMN Backend (Schema + Store + MCP Tools)
 
 Ziel: AI-Agent kann Prozess-Diagramme ueber MCP-Tools erstellen.
 
-- [ ] `src/bpmn/schema.ts`:
+- [x] `src/bpmn/schema.ts`:
   - `ProcessNodeType = z.enum(['start-event', 'end-event', 'task', 'gateway'])`
   - `GatewayType = z.enum(['exclusive'])` (spaeter: `parallel`, `inclusive`)
   - `ProcessNodeSchema`, `FlowSchema`, `ProcessSchema`
   - `format: z.literal('daten-viz-bpmn-v1')`
   - `emptyProcess()` Factory
-- [ ] `src/bpmn/store.ts`:
+- [x] `src/bpmn/store.ts`:
   - `ProcessStore` — gleiche Patterns wie `DiagramStore`
   - Atomic writes (tmp + rename)
   - `.bpmn.json` / `.bpmn.pos.json` Dateipfade
-- [ ] `src/bpmn/tools.ts`:
+- [x] `src/bpmn/tools.ts`:
   - `registerProcessTools(server, store)` — 6 Tools
   - `process_add_node`: Validierung (max 1 Start-Event, min 1 End-Event ist kein Hard-Error)
   - `process_remove_node`: Cascade-Delete aller Flows
   - `process_add_flow` / `process_remove_flow`
   - `process_get_schema` / `process_export_mermaid`
-- [ ] `src/server.ts` erweitern:
+- [x] `src/server.ts` erweitern:
   - `--bpmn-file` Flag via `parseArgs` (Default: `./process.bpmn.json`)
   - `ProcessStore` instanziieren + `registerProcessTools()` aufrufen
-- [ ] `src/bpmn/export-mermaid.ts`:
+- [x] `src/bpmn/export-mermaid.ts`:
   - Process -> Mermaid `flowchart LR` Syntax
   - Gateway als Raute `{Genehmigt?}`
   - Sortierte Ausgabe fuer deterministische Diffs
-- [ ] Tests:
+- [x] Tests:
   - Unit: `bpmn/schema.ts` — Validation Edge Cases
   - Unit: `bpmn/store.ts` — load, save, missing file
   - Unit: `bpmn/export-mermaid.ts` — Mermaid Output
   - Sicherstellen dass ERD-Tools weiterhin funktionieren
 
 **Akzeptanzkriterien Phase 2:**
-- [ ] `process_add_node` erstellt Nodes in `.bpmn.json`
-- [ ] `process_add_flow` verbindet Nodes
-- [ ] `process_remove_node` cascaded Flows
-- [ ] `process_get_schema` gibt korrektes JSON
-- [ ] `process_export_mermaid` produziert valides Mermaid
-- [ ] ERD-Tools funktionieren weiterhin unveraendert
+- [x] `process_add_node` erstellt Nodes in `.bpmn.json`
+- [x] `process_add_flow` verbindet Nodes
+- [x] `process_remove_node` cascaded Flows
+- [x] `process_get_schema` gibt korrektes JSON
+- [x] `process_export_mermaid` produziert valides Mermaid
+- [x] ERD-Tools funktionieren weiterhin unveraendert
 
 ### Phase 3: BPMN Preview + Multi-Diagram Tabs
 
 Ziel: Prozess-Diagramme im Browser anzeigen, zwischen ERD und BPMN wechseln.
 
-- [ ] `src/preview/vite-plugin.ts` erweitern:
+- [x] `src/preview/vite-plugin.ts` erweitern:
   - Neue API Routes: `/__daten-viz-api/bpmn/schema`, `/__daten-viz-api/bpmn/positions`
   - Chokidar Watcher fuer `.bpmn.json`
   - WS-Message: `{ type: 'schema-changed', diagramType: 'erd' | 'bpmn' }`
-- [ ] BPMN React Flow Nodes:
+- [x] BPMN React Flow Nodes:
   - `src/preview/components/bpmn/StartEventNode.tsx` — Gruen-umrandeter Kreis (SVG)
   - `src/preview/components/bpmn/EndEventNode.tsx` — Dick-umrandeter Kreis (SVG)
   - `src/preview/components/bpmn/TaskNode.tsx` — Abgerundetes Rechteck (shadcn Card-Style)
   - `src/preview/components/bpmn/GatewayNode.tsx` — Raute mit X-Symbol (SVG)
   - `src/preview/components/bpmn/SequenceFlowEdge.tsx` — Pfeil mit optionalem Label
-- [ ] `src/preview/hooks/useProcessSync.ts`:
+- [x] `src/preview/hooks/useProcessSync.ts`:
   - Spiegelt `useDiagramSync` — fetcht von `/bpmn/schema` und `/bpmn/positions`
   - `processToNodesAndEdges()` Mapping-Funktion
   - Position-Writes zu `.bpmn.pos.json`
-- [ ] `src/preview/layout/elk-layout.ts` erweitern:
+- [x] `src/preview/layout/elk-layout.ts` erweitern:
   - `estimateNodeSize()` erkennt BPMN-Typen (feste Groessen: Start/End 40x40, Task 160x60, Gateway 60x60)
-- [ ] Multi-Diagram Tabs in der App-Shell:
+- [x] Multi-Diagram Tabs in der App-Shell:
   - File-Browser in Sidebar zeigt `.erd.json` und `.bpmn.json`
   - Klick oeffnet Diagramm als neuen Tab
   - Tab bestimmt welcher Canvas (ERD vs BPMN) gerendert wird
   - Beide Canvases behalten ihren State beim Tab-Wechsel
-- [ ] Properties-Panel in der Sidebar:
+- [x] Properties-Panel in der Sidebar:
   - Bei Selektion eines ERD-Elements: Tabellenname, Columns, Beschreibung
   - Bei Selektion eines BPMN-Elements: Node-Typ, Label, Description
   - Read-only (Editing nur ueber MCP-Tools)
-- [ ] ELK Auto-Layout fuer BPMN:
+- [x] ELK Auto-Layout fuer BPMN:
   - `elk.algorithm: 'layered'`, `elk.direction: 'RIGHT'`
   - Start-Events links, End-Events rechts
 
 **Akzeptanzkriterien Phase 3:**
-- [ ] BPMN-Diagramm rendert im Browser mit korrekten Shapes
-- [ ] Start = gruener Kreis, End = roter dicker Kreis, Task = Rechteck, Gateway = Raute
-- [ ] Tabs wechseln zwischen ERD und BPMN
-- [ ] Sidebar zeigt Dateien und Properties
-- [ ] Live-Sync: MCP-Aenderungen erscheinen in <1s im Browser
-- [ ] Positionen werden in `.bpmn.pos.json` gespeichert
+- [x] BPMN-Diagramm rendert im Browser mit korrekten Shapes
+- [x] Start = gruener Kreis, End = roter dicker Kreis, Task = Rechteck, Gateway = Raute
+- [x] Tabs wechseln zwischen ERD und BPMN
+- [x] Sidebar zeigt Dateien und Properties
+- [x] Live-Sync: MCP-Aenderungen erscheinen in <1s im Browser
+- [x] Positionen werden in `.bpmn.pos.json` gespeichert
 
 ## Acceptance Criteria
 
 ### Functional Requirements
 
-- [ ] 6 neue MCP Tools (`process_*`) funktionieren korrekt
-- [ ] shadcn App-Shell mit Sidebar, Tabs, Properties-Panel
-- [ ] ERD + BPMN Diagramme koexistieren in der gleichen Anwendung
-- [ ] Dark Blueprint Aesthetic bleibt erhalten (jetzt via shadcn)
-- [ ] Live-Updates fuer beide Diagramm-Typen
-- [ ] Mermaid Export fuer Prozess-Diagramme
+- [x] 6 neue MCP Tools (`process_*`) funktionieren korrekt
+- [x] shadcn App-Shell mit Sidebar, Tabs, Properties-Panel
+- [x] ERD + BPMN Diagramme koexistieren in der gleichen Anwendung
+- [x] Dark Blueprint Aesthetic bleibt erhalten (jetzt via shadcn)
+- [x] Live-Updates fuer beide Diagramm-Typen
+- [x] Mermaid Export fuer Prozess-Diagramme
 
 ### Non-Functional Requirements
 
-- [ ] Bestehende 20 ERD-Tests passen weiterhin
-- [ ] Neue BPMN-Tests (Schema, Store, Mermaid)
-- [ ] TypeScript strict mode
-- [ ] Keine Regression in ERD-Funktionalitaet
+- [x] Bestehende 20 ERD-Tests passen weiterhin
+- [x] Neue BPMN-Tests (Schema, Store, Mermaid)
+- [x] TypeScript strict mode
+- [x] Keine Regression in ERD-Funktionalitaet
 
 ## Architektur-Entscheidungen
 

@@ -1,7 +1,7 @@
 {
   "name": "daten-viz-mcp",
-  "version": "0.1.0",
-  "description": "Agent-native MCP server for ER diagram visualization",
+  "version": "0.2.0",
+  "description": "Agent-native MCP server for ER diagram and BPMN process visualization",
   "type": "module",
   "bin": {
     "daten-viz-mcp": "./dist/server.cjs"
