@@ -1,0 +1,460 @@
+/* ========================================
+   Daten-Viz: Dark Blueprint Theme
+   ======================================== */
+
+:root {
+  /* Canvas */
+  --canvas-bg: #0B0E14;
+  --canvas-grid-dot: #1A2030;
+  --canvas-grid-dot-accent: #243044;
+
+  /* Node (Table Card) */
+  --node-bg: #111820;
+  --node-border: #1E2A3A;
+  --node-border-hover: #2D6B9E;
+  --node-border-selected: #3B9EFF;
+  --node-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+
+  /* Header (Table Name) */
+  --header-bg: #141C28;
+  --header-text: #E2E8F0;
+  --header-icon: #3B9EFF;
+
+  /* Columns */
+  --column-text: #94A3B8;
+  --column-text-pk: #E2E8F0;
+  --column-divider: #1A2333;
+
+  /* Type Badges */
+  --type-badge-bg: #1A2333;
+  --type-badge-text: #64748B;
+  --type-badge-text-pk: #F59E0B;
+
+  /* Primary Key Indicator */
+  --pk-amber: #F59E0B;
+  --pk-amber-dim: rgba(245, 158, 11, 0.15);
+
+  /* Nullable Indicator */
+  --nullable-text: #475569;
+
+  /* Edges (Relations) */
+  --edge-stroke: #2D4A6E;
+  --edge-stroke-hover: #3B9EFF;
+  --edge-label-bg: #111820;
+  --edge-label-text: #64748B;
+  --edge-label-text-hover: #94A3B8;
+
+  /* Controls & UI Chrome */
+  --controls-bg: #111820;
+  --controls-border: #1E2A3A;
+  --controls-icon: #64748B;
+  --controls-icon-hover: #E2E8F0;
+
+  /* MiniMap */
+  --minimap-bg: #0B0E14;
+  --minimap-node: #1E2A3A;
+  --minimap-viewport: rgba(59, 158, 255, 0.25);
+
+  /* Status / Feedback */
+  --status-connected: #22C55E;
+  --status-reconnecting: #F59E0B;
+  --status-error: #EF4444;
+
+  /* Empty State */
+  --empty-text: #475569;
+  --empty-border: #1E2A3A;
+
+  /* Typography */
+  --font-header: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  --font-header-size: 13px;
+  --font-header-weight: 600;
+  --font-header-tracking: 0.02em;
+
+  --font-column: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  --font-column-size: 12px;
+  --font-column-weight: 400;
+
+  --font-type: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  --font-type-size: 10px;
+  --font-type-weight: 400;
+  --font-type-tracking: 0.03em;
+
+  --font-cardinality: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  --font-cardinality-size: 10px;
+  --font-cardinality-weight: 500;
+
+  --font-ui: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  --font-ui-size: 11px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
+
+/* ========================================
+   Global Reset
+   ======================================== */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--canvas-bg);
+  color: var(--column-text);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-size);
+}
+
+/* ========================================
+   React Flow Overrides
+   ======================================== */
+
+.react-flow__node {
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  font-size: inherit;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--node-border-selected);
+  stroke-width: 2;
+}
+
+.react-flow__controls {
+  background: var(--controls-bg) !important;
+  border: 1px solid var(--controls-border) !important;
+  border-radius: 6px !important;
+  box-shadow: var(--node-shadow) !important;
+}
+
+.react-flow__controls button {
+  background: var(--controls-bg);
+  border: 1px solid var(--controls-border);
+  color: var(--controls-icon);
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+}
+
+.react-flow__controls button:hover {
+  background: var(--node-bg);
+  color: var(--controls-icon-hover);
+}
+
+.react-flow__controls button svg {
+  fill: currentColor;
+}
+
+.react-flow__minimap {
+  border-radius: 6px !important;
+  border: 1px solid var(--controls-border) !important;
+  box-shadow: var(--node-shadow) !important;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.react-flow__background {
+  background: var(--canvas-bg);
+}
+
+/* ========================================
+   Table Node
+   ======================================== */
+
+.table-node {
+  background: var(--node-bg);
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  box-shadow: var(--node-shadow);
+  min-width: 240px;
+  max-width: 360px;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.table-node:hover {
+  border-color: var(--node-border-hover);
+}
+
+.table-node.selected {
+  border-color: var(--node-border-selected);
+  box-shadow: var(--node-shadow), 0 0 0 1px var(--node-border-selected);
+}
+
+.table-node__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--node-border);
+}
+
+.table-node__icon {
+  color: var(--header-icon);
+  font-size: 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.table-node__name {
+  font-family: var(--font-header);
+  font-size: var(--font-header-size);
+  font-weight: var(--font-header-weight);
+  letter-spacing: var(--font-header-tracking);
+  color: var(--header-text);
+}
+
+.table-node__count {
+  margin-left: auto;
+  font-family: var(--font-type);
+  font-size: var(--font-type-size);
+  color: var(--type-badge-text);
+  background: var(--type-badge-bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.table-node__body {
+  padding: var(--space-1) 0;
+}
+
+.table-node__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  position: relative;
+  transition: background 0.1s ease;
+}
+
+.table-node__row:hover {
+  background: rgba(59, 158, 255, 0.04);
+}
+
+.table-node__row[data-pk="true"] {
+  background: var(--pk-amber-dim);
+}
+
+.table-node__row[data-pk="true"]:hover {
+  background: rgba(245, 158, 11, 0.2);
+}
+
+.table-node__row + .table-node__row {
+  border-top: 1px solid var(--column-divider);
+}
+
+.table-node__col-name {
+  font-family: var(--font-column);
+  font-size: var(--font-column-size);
+  font-weight: var(--font-column-weight);
+  color: var(--column-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-node__row[data-pk="true"] .table-node__col-name {
+  color: var(--column-text-pk);
+}
+
+.table-node__col-type {
+  font-family: var(--font-type);
+  font-size: var(--font-type-size);
+  letter-spacing: var(--font-type-tracking);
+  color: var(--type-badge-text);
+  background: var(--type-badge-bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.table-node__row[data-pk="true"] .table-node__col-type {
+  color: var(--type-badge-text-pk);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.badge {
+  font-family: var(--font-type);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+
+.badge--pk {
+  color: var(--pk-amber);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.badge--nullable {
+  color: var(--nullable-text);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* React Flow Handles — invisible until hover */
+.table-node .react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: var(--edge-stroke);
+  border: 2px solid var(--node-bg);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.table-node:hover .react-flow__handle {
+  opacity: 1;
+}
+
+.table-node .react-flow__handle:hover {
+  background: var(--edge-stroke-hover);
+}
+
+/* ========================================
+   Edge Labels (Cardinality)
+   ======================================== */
+
+.edge-label {
+  font-family: var(--font-cardinality);
+  font-size: var(--font-cardinality-size);
+  font-weight: var(--font-cardinality-weight);
+  color: var(--edge-label-text);
+  background: var(--edge-label-bg);
+  border: 1px solid var(--node-border);
+  padding: 2px 8px;
+  border-radius: 4px;
+  pointer-events: all;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.react-flow__edge:hover .edge-label {
+  color: var(--edge-label-text-hover);
+  border-color: var(--node-border-hover);
+}
+
+/* ========================================
+   Status Indicator
+   ======================================== */
+
+.status-indicator {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-size);
+  color: var(--empty-text);
+  z-index: 5;
+}
+
+.status-indicator__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-connected);
+}
+
+.status-indicator__dot--reconnecting {
+  background: var(--status-reconnecting);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-indicator__dot--error {
+  background: var(--status-error);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ========================================
+   Empty State
+   ======================================== */
+
+.empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.empty-state__icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+  color: var(--empty-border);
+}
+
+.empty-state__title {
+  font-family: var(--font-header);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--empty-text);
+  margin-bottom: var(--space-2);
+}
+
+.empty-state__hint {
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-size);
+  color: var(--empty-text);
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+.empty-state__code {
+  display: inline-block;
+  margin-top: var(--space-3);
+  font-family: var(--font-column);
+  font-size: 11px;
+  color: var(--column-text);
+  background: var(--type-badge-bg);
+  padding: var(--space-1) 10px;
+  border-radius: 4px;
+  border: 1px dashed var(--empty-border);
+}
+
+/* ========================================
+   Animations
+   ======================================== */
+
+@keyframes node-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.table-node--entering {
+  animation: node-enter 0.2s ease-out;
+}
