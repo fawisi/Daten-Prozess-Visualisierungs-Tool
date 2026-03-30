@@ -25,10 +25,12 @@ Entwickler, die mit AI-Agents arbeiten (Claude Code, Cursor), haben kein Tool, m
 
 ### Architecture
 
+**Wichtig: MCP-Server und Vite-Preview sind separate OS-Prozesse.** Der MCP-Server nutzt stdio (stdin/stdout fuer Protokoll-Messages), was mit Vites Console-Output kollidieren wuerde. Beide koordinieren ausschliesslich ueber das Dateisystem.
+
 ```
 ┌─────────────────┐     stdio      ┌──────────────────┐
-│  Claude Code /  │ ◄────────────► │   MCP Server     │
-│  Claude Desktop │                │  (@mcp/server)   │
+│  Claude Code /  │ ◄────────────► │   MCP Server     │ ← Prozess 1
+│  Claude Desktop │                │  (node)          │
 └─────────────────┘                └────────┬─────────┘
                                             │
                                    writes   │  reads
@@ -41,71 +43,67 @@ Entwickler, die mit AI-Agents arbeiten (Claude Code, Cursor), haben kein Tool, m
                                    chokidar │  watches
                                             ▼
 ┌─────────────────┐   WebSocket    ┌──────────────────┐
-│  Browser        │ ◄────────────► │  Vite Dev Server │
+│  Browser        │ ◄────────────► │  Vite Dev Server │ ← Prozess 2
 │  (React Flow)   │                │  + WS Plugin     │
 └─────────────────┘                └──────────────────┘
 ```
 
+- **Prozess 1** (MCP Server): Gestartet von Claude Desktop/Code via `claude_desktop_config.json`
+- **Prozess 2** (Preview): Gestartet vom User via `npx daten-viz serve`
+- **Koordination:** Ausschliesslich ueber `.erd.json` auf Disk
+
 ### Projekt-Struktur
+
+**Phase 1 — minimal (4 Dateien):**
 
 ```
 src/
-├── mcp/                    # MCP Server
-│   ├── server.ts           # McpServer init + transport
-│   ├── tools/
-│   │   ├── table-tools.ts  # diagram_create_table, diagram_remove_table, diagram_update_table
-│   │   ├── column-tools.ts # diagram_add_column, diagram_remove_column, diagram_update_column
-│   │   ├── relation-tools.ts # diagram_add_relation, diagram_remove_relation
-│   │   └── query-tools.ts  # diagram_get_schema, diagram_get_table, diagram_query_relations
-│   └── index.ts            # Entry point (stdio transport)
-├── core/
-│   ├── schema.ts           # Zod v4 validation schemas (DiagramSchema, TableSchema, etc.)
-│   ├── store.ts            # DiagramFileStore — JSON file read/write + chokidar watcher
-│   └── defaults.ts         # Default values, empty schema template
-├── preview/
-│   ├── vite-plugin.ts      # Vite plugin: WebSocket bridge to browser
-│   ├── App.tsx             # React Flow canvas with MiniMap, Controls, Background
-│   ├── components/
-│   │   ├── TableNode.tsx   # Custom React Flow node fuer Datenbank-Tabellen
-│   │   ├── RelationEdge.tsx # Custom edge mit Kardinalitaets-Labels
-│   │   └── Toolbar.tsx     # Auto-Layout Button, Export, Theme Toggle
-│   ├── hooks/
-│   │   └── useDiagramSync.ts # WebSocket client hook
-│   ├── layout/
-│   │   └── elk-layout.ts   # ELK.js auto-layout integration
-│   ├── index.html
-│   └── main.tsx
-├── cli/
-│   ├── index.ts            # Commander.js CLI entry point
-│   ├── commands/
-│   │   ├── serve.ts        # `daten-viz serve` — startet Vite + MCP
-│   │   ├── export.ts       # `daten-viz export --format mermaid|d2`
-│   │   ├── validate.ts     # `daten-viz validate schema.erd.json`
-│   │   └── init.ts         # `daten-viz init` — erstellt leere .erd.json
-│   └── utils.ts
-├── export/
-│   ├── mermaid.ts          # Internal format → Mermaid ER syntax
-│   └── d2.ts               # Internal format → D2 syntax
-├── import/
-│   ├── mermaid.ts          # Mermaid ER → Internal format
-│   └── sql-ddl.ts          # SQL CREATE TABLE → Internal format
-└── types/
-    └── index.ts            # Shared TypeScript types
+  schema.ts       # Zod v4 Schemas + inferred Types (kein separates types/)
+  store.ts        # DiagramFileStore: load(), save(), atomic writes
+  tools.ts        # Alle 7 MCP Tool-Definitionen
+  server.ts       # MCP Server init + stdio transport (Entry Point)
 ```
+
+**Phase 2 — Preview hinzu:**
+
+```
+src/
+  schema.ts
+  store.ts
+  tools.ts
+  server.ts
+  preview/
+    vite-plugin.ts      # chokidar watch → WebSocket broadcast + Position-Write
+    App.tsx              # React Flow Canvas mit MiniMap, Controls, Background
+    components/
+      TableNode.tsx      # Custom Node: Tabellenname als Header, Spalten als Rows
+      RelationEdge.tsx   # Custom Edge mit Kardinalitaets-Label
+    hooks/
+      useDiagramSync.ts  # WebSocket Client Hook
+    layout/
+      elk-layout.ts      # ELK.js Auto-Layout
+    index.html
+    main.tsx
+```
+
+**Phase 3 — Export hinzu:**
+
+```
+src/
+  ...
+  export/
+    mermaid.ts    # Internal → Mermaid ER Syntax
+```
+
+Struktur waechst mit dem Code. Keine leeren Verzeichnisse oder Platzhalter-Dateien.
 
 ### Dateiformat (.erd.json)
 
-JSON-basiert, git-diffable, token-effizient (~2000-3000 Tokens fuer 10 Tabellen):
+Vereinfacht — nur Felder die der MVP tatsaechlich braucht:
 
-```jsonc
+```json
 {
-  "version": 1,
-  "type": "er-diagram",
-  "meta": {
-    "name": "My Database Schema",
-    "created": "2026-03-30T10:00:00Z",
-    "modified": "2026-03-30T12:30:00Z"
-  },
+  "name": "My Database Schema",
   "tables": {
     "users": {
       "columns": [
@@ -114,65 +112,60 @@ JSON-basiert, git-diffable, token-effizient (~2000-3000 Tokens fuer 10 Tabellen)
         { "name": "name", "type": "varchar" },
         { "name": "created_at", "type": "timestamp" }
       ],
-      "position": { "x": 0, "y": 0 },
-      "color": "#3b82f6"
+      "position": { "x": 0, "y": 0 }
     }
   },
   "relations": [
     {
-      "id": "orders_user_id_fk",
       "from": { "table": "orders", "column": "user_id" },
       "to": { "table": "users", "column": "id" },
       "type": "many-to-one"
     }
-  ],
-  "layout": {
-    "direction": "LR",
-    "autoLayout": false
-  }
+  ]
 }
 ```
 
 **Design-Entscheidungen:**
 - **Tables als keyed Object** (nicht Array) — git-diffs zeigen nur neue Keys, kein Array-Index-Shift
-- **Human-readable IDs** (`"orders_user_id_fk"`) statt UUIDs — spart Tokens, lesbar ohne Tool
-- **Positions pro Table** — kein separater Layout-Bereich noetig
+- **Keine Relation-IDs** — `from.table + from.column` ist der natuerliche Key. Zum Loeschen reicht `from`-Referenz
+- **Keine `version`, `type`, `meta`, `layout`, `color`** — koennen spaeter als optionale Felder ergaenzt werden ohne Breaking Change
+- **Positions pro Table** — optional, wenn absent berechnet Auto-Layout die Position
 - **Kardinalitaeten:** `one-to-one`, `one-to-many`, `many-to-one`, `many-to-many`
 
-### MCP Tools (Phase 1)
+### MCP Tools (Phase 1 — 7 Tools)
 
-Alle Tools mit Prefix `diagram_`, Zod v4 Schemas, `.describe()` auf jedem Feld:
+Reduziert auf das Minimum fuer einen funktionalen MVP. Alle mit Prefix `diagram_`, Zod v4 Schemas, `.describe()` auf jedem Feld:
 
 | Tool | Beschreibung | Parameter |
 |------|-------------|-----------|
-| `diagram_create_table` | Neue Tabelle erstellen | `name`, `columns[]` (name, type, primary, nullable) |
+| `diagram_create_table` | Neue Tabelle erstellen | `name`, `columns[]` (name, type, primary?, nullable?) |
 | `diagram_remove_table` | Tabelle entfernen | `name` |
-| `diagram_add_column` | Spalte zu Tabelle hinzufuegen | `table`, `column` (name, type, primary, nullable) |
+| `diagram_add_column` | Spalte zu Tabelle hinzufuegen | `table`, `column` (name, type, primary?, nullable?) |
 | `diagram_remove_column` | Spalte entfernen | `table`, `column` |
 | `diagram_add_relation` | FK-Beziehung erstellen | `from` (table, column), `to` (table, column), `type` |
-| `diagram_remove_relation` | Beziehung entfernen | `id` |
+| `diagram_remove_relation` | Beziehung entfernen | `from` (table, column) |
 | `diagram_get_schema` | Gesamtes Schema auslesen | — |
-| `diagram_get_table` | Einzelne Tabelle mit Relations | `name` |
-| `diagram_query_relations` | Relations filtern | `table?`, `type?` |
-| `diagram_update_table` | Tabelle umbenennen oder Farbe aendern | `name`, `newName?`, `color?` |
-| `diagram_update_column` | Spalte umbenennen oder Typ aendern | `table`, `column`, `newName?`, `newType?` |
-| `diagram_auto_layout` | ELK.js Layout ausloesen | `direction?` (LR, TB) |
-| `diagram_export_mermaid` | Schema als Mermaid-Text zurueckgeben | — |
-| `diagram_export_d2` | Schema als D2-Text zurueckgeben | — |
+
+**Bewusst rausgelassen fuer Phase 1:**
+- `diagram_get_table` / `diagram_query_relations` — `get_schema` reicht, Schema ist <3000 Tokens fuer 10 Tabellen
+- `diagram_update_table` / `diagram_update_column` — Remove + Create reicht
+- `diagram_auto_layout` — erst relevant mit Browser in Phase 2
+- `diagram_export_*` — erst in Phase 3
 
 ### Tech Stack
 
-| Komponente | Technologie | Version |
-|-----------|-------------|---------|
-| MCP Server | `@modelcontextprotocol/server` + `@modelcontextprotocol/node` | v1.x |
-| Schema Validation | `zod` (v4, import via `zod/v4`) | v4 |
-| Rendering | `@xyflow/react` (React Flow) | v12+ |
-| Auto-Layout | `elkjs` | latest |
-| Dev Server | `vite` + `@vitejs/plugin-react` | v8 |
-| CLI | `commander` | v14 |
-| File Watcher | `chokidar` | v5 (ESM) |
-| WebSocket | `ws` | latest |
-| Build | `tsup` (fuer MCP/CLI), Vite (fuer Preview) | latest |
+| Komponente | Technologie | Phase |
+|-----------|-------------|-------|
+| MCP Server | `@modelcontextprotocol/server` + `@modelcontextprotocol/node` | 1 |
+| Schema Validation | `zod` (v4, import via `zod/v4`) | 1 |
+| Build | `tsup` | 1 |
+| Rendering | `@xyflow/react` (React Flow) | 2 |
+| Auto-Layout | `elkjs` | 2 |
+| Dev Server | `vite` + `@vitejs/plugin-react` | 2 |
+| File Watcher | `chokidar` v5 (ESM) | 2 |
+| WebSocket | `ws` | 2 |
+
+**Bewusst entfernt:** `commander` (kein CLI-Framework noetig — `node dist/server.js` reicht fuer Phase 1, Vite hat eigenen Dev-Server fuer Phase 2).
 
 ### Implementation Phases
 
@@ -180,65 +173,65 @@ Alle Tools mit Prefix `diagram_`, Zod v4 Schemas, `.describe()` auf jedem Feld:
 
 Ziel: MCP Server funktioniert in Claude Code, Agent kann Schemas erstellen/lesen.
 
-- [ ] `package.json` + `tsconfig.json` + Monorepo-Setup (oder single package mit mehreren Entry Points)
-- [ ] `src/core/schema.ts` — Zod v4 Schemas fuer DiagramSchema, TableSchema, ColumnSchema, RelationSchema
-- [ ] `src/core/store.ts` — DiagramFileStore: `load()`, `save()`, `watchForExternalChanges()`
-- [ ] `src/core/defaults.ts` — Leeres Schema-Template, Default-Werte
-- [ ] `src/mcp/tools/table-tools.ts` — `diagram_create_table`, `diagram_remove_table`
-- [ ] `src/mcp/tools/column-tools.ts` — `diagram_add_column`, `diagram_remove_column`
-- [ ] `src/mcp/tools/relation-tools.ts` — `diagram_add_relation`, `diagram_remove_relation`
-- [ ] `src/mcp/tools/query-tools.ts` — `diagram_get_schema`, `diagram_get_table`, `diagram_query_relations`
-- [ ] `src/mcp/server.ts` — McpServer init, alle Tools registrieren
-- [ ] `src/mcp/index.ts` — StdioServerTransport, Entry Point
-- [ ] Build mit `tsup` → `dist/mcp/index.js`
-- [ ] Test: MCP Server in Claude Desktop konfigurieren, Schema erstellen lassen
+**Dependencies:** `@modelcontextprotocol/server`, `@modelcontextprotocol/node`, `zod`, `tsup`
+
+- [ ] `package.json` + `tsconfig.json` (single package, strict mode)
+- [ ] `src/schema.ts` — Zod v4 Schemas fuer DiagramSchema, TableSchema, ColumnSchema, RelationSchema + inferred Types
+- [ ] `src/store.ts` — DiagramFileStore: `load()`, `save()` mit atomic writes (tmp + rename), Pfad-Validation, Dateigroessen-Limit
+- [ ] `src/tools.ts` — Alle 7 MCP Tools mit Zod Input-Schemas und strukturierten Error-Responses
+- [ ] `src/server.ts` — McpServer init, Tools registrieren, StdioServerTransport, `--file` Argument parsen
+- [ ] Build mit `tsup` → `dist/server.js`
+- [ ] **Tests:** Unit Tests fuer `schema.ts` (Validation Edge Cases), `store.ts` (load, save, missing file, corrupt file, atomic write)
+- [ ] **Tests:** Integration Test: MCP Tool programmatisch aufrufen → `.erd.json` Output pruefen
+- [ ] MCP Server in Claude Desktop konfigurieren und End-to-End testen
 
 **Akzeptanzkriterien:**
 - [ ] `npx daten-viz-mcp` startet MCP Server via stdio
 - [ ] Claude kann `diagram_create_table` aufrufen und bekommt Bestaetigung
 - [ ] `.erd.json` Datei wird korrekt geschrieben und ist valide
 - [ ] `diagram_get_schema` gibt das komplette Schema zurueck
+- [ ] Fehlerhafte Inputs (doppelter Tabellenname, fehlende Column) geben klare Fehlermeldungen
 
 #### Phase 2: Browser Preview
 
 Ziel: Live-Vorschau im Browser, die sich automatisch aktualisiert wenn der Agent Aenderungen macht.
 
+**Neue Dependencies:** `@xyflow/react`, `elkjs`, `vite`, `@vitejs/plugin-react`, `chokidar`, `ws`
+
 - [ ] `src/preview/App.tsx` — React Flow Canvas mit MiniMap, Controls, Background
-- [ ] `src/preview/components/TableNode.tsx` — Custom Node: Tabellenname als Header, Spalten als Rows mit Typ-Badges
+- [ ] `src/preview/components/TableNode.tsx` — Custom Node: Tabellenname als Header, Spalten als Rows mit Typ-Badges (memoized)
 - [ ] `src/preview/components/RelationEdge.tsx` — Custom Edge mit Kardinalitaets-Label
-- [ ] `src/preview/hooks/useDiagramSync.ts` — WebSocket Client Hook
+- [ ] `src/preview/hooks/useDiagramSync.ts` — WebSocket Client Hook mit Auto-Reconnect
 - [ ] `src/preview/layout/elk-layout.ts` — ELK.js Auto-Layout Funktion
-- [ ] `src/preview/vite-plugin.ts` — Vite Plugin: chokidar watch auf `.erd.json` → WebSocket broadcast
+- [ ] `src/preview/vite-plugin.ts` — Vite Plugin: chokidar watch → WebSocket broadcast + Position-Write via `store.ts`
 - [ ] `src/preview/index.html` + `src/preview/main.tsx` — Vite Entry Points
-- [ ] Dark/Light Theme mit CSS Variables
-- [ ] `src/preview/components/Toolbar.tsx` — Auto-Layout Button, Direction Toggle, Theme Switch
+- [ ] WebSocket Origin-Validation (nur localhost), Zod-Validation auf eingehende Messages
+- [ ] Chokidar Feedback-Loop verhindern (Self-Write-Flag oder Content-Hash-Vergleich)
+- [ ] `diagram_auto_layout` MCP Tool hinzufuegen
 
 **Akzeptanzkriterien:**
-- [ ] `npx daten-viz serve` oeffnet Browser mit leerem Canvas
+- [ ] `npx daten-viz serve` oeffnet Browser mit Canvas (bindet an 127.0.0.1)
 - [ ] Wenn Agent via MCP eine Tabelle erstellt, erscheint sie innerhalb von <1s im Browser
-- [ ] Tabellen sind drag-bar, Positionen werden in `.erd.json` gespeichert
-- [ ] Auto-Layout ordnet alle Tabellen sauber an
+- [ ] Tabellen sind drag-bar, Positionen werden in `.erd.json` gespeichert (debounced 500ms)
+- [ ] Auto-Layout ordnet alle Tabellen sauber an (ELK.js)
 - [ ] Relations zeigen Kardinalitaet (1:1, 1:N, N:M)
 
-#### Phase 3: CLI + Export/Import
+#### Phase 3: Mermaid Export
 
-Ziel: Eigenstaendige CLI-Commands fuer Export, Import, Validation.
+Ziel: Schema als Mermaid exportieren fuer Dokumentation und Sharing.
 
-- [ ] `src/cli/index.ts` — Commander.js Setup mit Subcommands
-- [ ] `src/cli/commands/serve.ts` — Startet Vite Preview Server
-- [ ] `src/cli/commands/init.ts` — Erstellt leere `.erd.json` mit Wizard
-- [ ] `src/cli/commands/export.ts` — Export zu Mermaid und D2
-- [ ] `src/cli/commands/validate.ts` — Schema-Validation gegen Zod Schema
-- [ ] `src/export/mermaid.ts` — Internal → Mermaid erDiagram Syntax
-- [ ] `src/export/d2.ts` — Internal → D2 Syntax
-- [ ] `src/import/mermaid.ts` — Mermaid ER → Internal Format (basic)
-- [ ] `src/import/sql-ddl.ts` — SQL CREATE TABLE → Internal Format
+- [ ] `src/export/mermaid.ts` — Internal → Mermaid erDiagram Syntax (Column-Types escapen)
+- [ ] `diagram_export_mermaid` MCP Tool
+- [ ] Einfaches CLI-Script: `node dist/export-mermaid.js schema.erd.json`
+
+**Bewusst rausgelassen:**
+- D2 Export (YAGNI — Mermaid ist universeller, D2 kommt wenn Nachfrage da ist)
+- Mermaid/SQL Import (Agent erstellt von Scratch via MCP — Import ist anderer Workflow)
+- Commander.js CLI-Framework (einfaches `process.argv` Script reicht)
 
 **Akzeptanzkriterien:**
-- [ ] `daten-viz init` erstellt eine valide `.erd.json`
-- [ ] `daten-viz export --format mermaid schema.erd.json` gibt valides Mermaid aus
-- [ ] `daten-viz validate schema.erd.json` prueft Integritaet (fehlende FK-Targets, etc.)
-- [ ] `daten-viz export --format d2 schema.erd.json` gibt valides D2 aus
+- [ ] Export produziert valides Mermaid das in GitHub/GitLab rendert
+- [ ] Agent kann `diagram_export_mermaid` aufrufen und das Ergebnis in eine Datei schreiben
 
 ## Alternative Approaches Considered
 
@@ -247,21 +240,22 @@ Ziel: Eigenstaendige CLI-Commands fuer Export, Import, Validation.
 | D3.js fuer Rendering | Zu low-level, kein Node/Edge-Konzept, alles manuell bauen |
 | Konva (Canvas-based) | Kein DOM in Nodes → keine interaktiven Elemente, kein Edge-Routing |
 | Dagre fuer Layout | Kein port-basiertes Edge-Routing, weniger Konfiguration als ELK |
-| Eigener WebSocket-Server (getrennt von Vite) | Port-Konflikte, extra Prozess, Vite-Plugin ist eleganter |
 | DBML als Format (wie dbdiagram.io) | Proprietaer, kein Standard, schlechter fuer LLM-Interaktion als JSON |
 | Binaeresformat (wie Pencil .pen) | Nicht git-diffable, nicht human-readable, Overengineering fuer MVP |
+| Version-Counter im Dateiformat | Over-engineered fuer MVP — atomic writes reichen (siehe Architecture Review) |
+| Commander.js CLI | Kein CLI-Framework noetig — direkte Entry Points reichen fuer MVP |
+| 14 MCP Tools | 7 reichen — get_schema deckt Queries ab, remove+create ersetzt update |
 
 ## Acceptance Criteria
 
 ### Functional Requirements
 
 - [ ] MCP Server laeuft via stdio und ist in Claude Desktop/Code konfigurierbar
-- [ ] Alle 10 MCP Tools funktionieren korrekt (create, read, update, delete fuer Tables, Columns, Relations)
+- [ ] 7 MCP Tools funktionieren korrekt (CRUD fuer Tables, Columns, Relations + Schema lesen)
 - [ ] Browser Preview zeigt ER-Diagramm mit Tabellen, Spalten, Typen und Relations
 - [ ] Live-Updates: MCP-Aenderungen erscheinen innerhalb von 1 Sekunde im Browser
-- [ ] Auto-Layout mit ELK.js funktioniert in beide Richtungen (LR, TB)
-- [ ] Export zu Mermaid und D2 produziert valide Syntax
-- [ ] CLI Commands: `init`, `serve`, `export`, `validate`
+- [ ] Auto-Layout mit ELK.js
+- [ ] Export zu Mermaid produziert valide Syntax
 
 ### Non-Functional Requirements
 
@@ -273,45 +267,48 @@ Ziel: Eigenstaendige CLI-Commands fuer Export, Import, Validation.
 ### Quality Gates
 
 - [ ] TypeScript strict mode
-- [ ] Zod-Validation auf allen Inputs (MCP Tools + File Load)
-- [ ] Unit Tests fuer Core (schema, store, export/import)
-- [ ] Integration Test: MCP Tool → File → WebSocket → Browser
+- [ ] Zod-Validation auf allen Inputs (MCP Tools + File Load + WebSocket Messages)
+- [ ] Unit Tests fuer Core (schema, store)
+- [ ] Integration Test: MCP Tool → File → korrekte JSON-Ausgabe
+- [ ] Security: Pfad-Validation, Name-Validation, Origin-Check auf WebSocket
 
 ## Dependencies & Prerequisites
 
-- Node.js >= 20 (fuer chokidar v5 ESM)
+- Node.js >= 20 (fuer ESM Support)
 - Claude Desktop oder Claude Code mit MCP-Support
 - Moderne Browser (Chrome, Firefox, Safari) fuer Preview
 
-## Architektur-Entscheidungen (aus SpecFlow-Analyse)
-
-Die folgenden kritischen Fragen wurden durch die SpecFlow-Analyse identifiziert und hier beantwortet:
+## Architektur-Entscheidungen (aus SpecFlow-Analyse + Reviews)
 
 ### E1: Browser → File Kommunikation (bidirektional)
 
-**Entscheidung:** Browser sendet Position-Updates via WebSocket an den Vite-Server, der schreibt auf Disk (debounced 500ms).
+**Entscheidung:** Browser sendet Position-Updates via WebSocket an den Vite-Server. Der Vite-Server delegiert den Write an `store.ts` (gleiche Logik wie MCP-Writes). Atomic Write (tmp + rename).
 
-**Ablauf:** React Flow `onNodeDragStop` → WebSocket `{ type: 'position-update', nodeId, position }` → Vite Plugin empfaengt → Merged mit aktuellem .erd.json → Atomic Write (tmp + rename).
+**Ablauf:** React Flow `onNodeDragStop` → WebSocket `{ type: 'position-update', nodeId, position }` → Vite Plugin validiert mit Zod → `store.ts` merged Position → Atomic Write.
 
-### E2: Concurrency-Modell (MCP + Browser gleichzeitig)
+**Wichtig:** Der Vite-Plugin schreibt NICHT selbst auf Disk, sondern nutzt `store.ts`. Single Writer Principle — `store.ts` ist die einzige Komponente die Dateien schreibt.
 
-**Entscheidung:** Optimistic Locking mit `version`-Counter im .erd.json.
+### E2: Concurrency-Modell (vereinfacht nach Architecture Review)
 
-- Jeder Write inkrementiert `version`
-- Vor jedem Write: aktuelle `version` lesen, vergleichen, nur schreiben wenn match
-- Bei Konflikt: Re-Read, Merge (Positions vs. Schema-Aenderungen sind disjunkt), Retry
+**Entscheidung:** Last-Write-Wins mit Atomic Writes. Kein Version-Counter.
+
 - Atomic File Writes: Schreibe `.erd.json.tmp`, dann `rename()` → kein korrupter Zwischenzustand
+- MCP-Server liest immer die aktuelle Datei vor jedem Write (read-before-write)
+- Browser schreibt nur Positions (disjunkt von Schema-Aenderungen)
+- Kein Locking, kein Merge, kein Retry — fuer MVP reicht das
+
+**Warum kein Version-Counter:** Der Counter lebt in der Datei selbst. Read-Compare-Write ist nicht atomar auf OS-Ebene. Zwei Prozesse koennten gleichzeitig die gleiche Version lesen und beide den Check bestehen. Atomic Writes + Read-Before-Write ist einfacher und robuster fuer den MVP-Usecase (ein User, ein Agent, ein Browser).
 
 ### E3: First-Run Experience
 
 **Entscheidung:**
-- `diagram_get_schema` ohne existierende Datei → gibt leeres Schema zurueck `{ tables: {}, relations: [] }`
+- `diagram_get_schema` ohne existierende Datei → gibt leeres Schema zurueck `{ name: "", tables: {}, relations: [] }`
 - `diagram_create_table` ohne existierende Datei → erstellt die Datei automatisch
-- `daten-viz serve` ohne Datei → zeigt leeren Canvas mit Hint "Erstelle dein erstes Schema mit dem MCP-Server oder `daten-viz init`"
+- `npx daten-viz serve` ohne Datei → zeigt leeren Canvas mit Hint
 
 ### E4: File-Targeting (welche .erd.json?)
 
-**Entscheidung:** MCP-Server empfaengt `--file` Argument beim Start (in `claude_desktop_config.json`). Default: `./schema.erd.json` im Working Directory.
+**Entscheidung:** MCP-Server empfaengt `--file` Argument beim Start. Default: `./schema.erd.json` im Working Directory.
 
 ```json
 {
@@ -324,7 +321,7 @@ Die folgenden kritischen Fragen wurden durch die SpecFlow-Analyse identifiziert 
 }
 ```
 
-Spaeter (Post-MVP): Multi-Diagram Support via `diagram_open_file` Tool.
+**Security:** Pfad wird mit `path.resolve()` aufgeloest, muss auf `.erd.json` enden, darf kein `..`-Segment nach Resolution enthalten.
 
 ### E5: Validation Rules
 
@@ -332,12 +329,13 @@ Spaeter (Post-MVP): Multi-Diagram Support via `diagram_open_file` Tool.
 - Zirkulaere Relations: **erlaubt** (A→B→C→A ist valide)
 - Tabelle ohne Spalten: **nicht erlaubt** (mindestens 1 Column)
 - Column Types: **Freitext-Strings** (kein geschlossenes Enum — verschiedene DB-Dialekte)
-- Tabellen-/Spaltennamen: **snake_case empfohlen**, alphanumerisch + Underscore, kein Leerzeichen
+- **Tabellen-/Spaltennamen:** Strikt validiert: `/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`. Prototype-Property-Namen (`__proto__`, `constructor`, `prototype`) explizit blockiert
+- **String-Laengen:** Max 64 Zeichen fuer Namen, Max 128 Zeichen fuer Types
 - Relation muss existierende Tabelle + Column referenzieren
 
 ### E6: Browser Scope (MVP)
 
-**Entscheidung:** Browser ist **Preview mit Drag-to-Reposition**. Kein Editing von Tabellen/Columns/Relations im Browser fuer MVP. Das haelt den Frontend-Scope klein und den MCP-Server als Single Source of Truth.
+**Entscheidung:** Browser ist **Preview mit Drag-to-Reposition**. Kein Editing von Tabellen/Columns/Relations im Browser. MCP-Server bleibt Single Source of Truth.
 
 ### E7: MCP Tool Error Responses
 
@@ -348,40 +346,53 @@ Alle Tools geben strukturierte Fehlermeldungen zurueck, die der LLM versteht:
 { content: [{ type: 'text', text: 'Created table "users" with 3 columns.' }] }
 
 // Fehler
-{ content: [{ type: 'text', text: 'Error: Table "users" already exists. Use diagram_get_table to inspect it, or diagram_remove_table to delete it first.' }], isError: true }
+{ content: [{ type: 'text', text: 'Error: Table "users" already exists. Use diagram_get_schema to inspect it, or diagram_remove_table to delete it first.' }], isError: true }
 ```
 
-### E8: Import/Export Entry Points
+### E8: MVP Scope — Explizite Ausschluesse
 
-| Operation | CLI | MCP Tool | Browser |
-|-----------|-----|----------|---------|
-| Import Mermaid | `daten-viz import schema.mmd` | `diagram_import` (Post-MVP) | Nein |
-| Import SQL DDL | Post-MVP | Post-MVP | Nein |
-| Export Mermaid | `daten-viz export --format mermaid` | `diagram_export_mermaid` | Export-Button |
-| Export D2 | `daten-viz export --format d2` | `diagram_export_d2` | Export-Button |
-
-### E9: MVP Scope — Explizite Ausschluesse
-
-Folgende Features sind **bewusst nicht im MVP**:
+Folgende Features sind **bewusst nicht im MVP** (koennen spaeter ergaenzt werden ohne Breaking Changes):
 - Browser-Editing (Tabellen/Columns/Relations im Browser anlegen/aendern)
 - Undo/Redo (Git ist der Fallback)
 - Multi-Diagram Support (ein .erd.json pro MCP-Session)
-- SQL DDL Import
+- D2 Export, Mermaid Import, SQL DDL Import
+- Commander.js CLI-Framework
 - Tauri Desktop-App
 - Prozess-/BPMN-Diagramme
 - Collaboration / Multiplayer
+- Dark/Light Theme Toggle (kommt mit Phase 2+)
+- Dateiformat-Felder: `version`, `type`, `meta`, `layout`, `color`, Relation-IDs
+
+## Security Considerations
+
+### Phase 1 (bei Implementation umsetzen)
+
+| Finding | Severity | Mitigation |
+|---------|----------|------------|
+| Path Traversal via `--file` | MEDIUM | `path.resolve()`, `.erd.json`-Extension erzwingen, kein `..` nach Resolution |
+| JSON-Dateigroesse | LOW | `fs.stat()` vor Parse, Limit 10MB |
+| Prototype Pollution bei Tabellennamen | LOW | `__proto__`, `constructor`, `prototype` in Name-Regex blockieren |
+| MCP Input Validation | LOW | Zod-Validation auf allen Tool-Inputs (bereits geplant) |
+
+### Phase 2 (bei Preview-Implementation umsetzen)
+
+| Finding | Severity | Mitigation |
+|---------|----------|------------|
+| WebSocket ohne Origin-Validation | MEDIUM | Origin-Header pruefen (nur localhost), Vite an `127.0.0.1` binden |
+| Browser→Disk ohne Validation | MEDIUM | Zod-Schema fuer WS-Messages, nur `position`-Feld mergen, nach Merge re-validieren |
+| Chokidar Feedback-Loop | LOW | Self-Write-Flag oder Content-Hash-Vergleich vor Broadcast |
 
 ## Risk Analysis & Mitigation
 
 | Risiko | Wahrscheinlichkeit | Impact | Mitigation |
 |--------|-------------------|--------|------------|
-| Race Condition: MCP + Browser schreiben gleichzeitig | Mittel | Hoch | Optimistic Locking mit Version-Counter + Atomic Writes (siehe E2) |
+| Race Condition: MCP + Browser schreiben gleichzeitig | Mittel | Mittel | Atomic Writes (tmp + rename), Positions disjunkt von Schema |
 | React Flow Performance bei 200+ Tabellen | Niedrig | Mittel | Virtualisierung, `nodesDraggable={false}` als Fallback |
 | MCP SDK Breaking Changes | Niedrig | Hoch | SDK-Version pinnen, Changelog beobachten |
-| WebSocket-Verbindung bricht ab | Mittel | Niedrig | Auto-Reconnect mit exponential backoff, Full-Sync bei Reconnect |
-| Chokidar false-positives (doppelte Events) | Hoch | Niedrig | Debounce (100ms) + Atomic Writes verhindern Partial Reads |
-| Korrupte .erd.json (manueller Edit, Merge-Konflikt) | Mittel | Mittel | Zod-Validation beim Load, klare Fehlermeldung + `daten-viz validate` |
-| Onboarding-Friction (MCP-Konfiguration) | Hoch | Hoch | `daten-viz setup` Command der `claude_desktop_config.json` automatisch konfiguriert |
+| WebSocket-Verbindung bricht ab | Mittel | Niedrig | Auto-Reconnect, Full-Sync bei Reconnect |
+| Chokidar false-positives | Hoch | Niedrig | Debounce (100ms) + Atomic Writes verhindern Partial Reads |
+| Korrupte .erd.json | Mittel | Mittel | Zod-Validation beim Load, klare Fehlermeldung, Git als Recovery |
+| Onboarding-Friction | Hoch | Hoch | Klare README mit Copy-Paste `claude_desktop_config.json` Snippet |
 
 ## Success Metrics
 
@@ -391,13 +402,19 @@ Folgende Features sind **bewusst nicht im MVP**:
 
 ## Future Considerations (Post-MVP)
 
+- `version`-Feld im Dateiformat + Schema-Migrationen (`core/migrations/`)
+- Update-Tools (`diagram_update_table`, `diagram_update_column`)
+- Query-Tools (`diagram_get_table`, `diagram_query_relations`)
+- D2 Export, Mermaid Import, SQL DDL Import
+- Multi-Diagram Support via `diagram_open_file` Tool
 - Tauri-Wrap fuer native Desktop-App
-- SQL DDL Import (PostgreSQL, MySQL)
 - Reverse-Engineering: Live-DB-Connection → Auto-Generate Schema
 - Prozess-/BPMN-Visualisierung als zweiter Diagramm-Typ
 - Cloud-Version mit Collaboration (Multiplayer-Editing)
-- npm-Package: `npx create-daten-viz` Scaffold
 - VS Code Extension mit Preview-Panel
+- Dark/Light Theme Toggle
+- `daten-viz setup` Command fuer automatische MCP-Konfiguration
+- `package.json` bin-Feld: `{ "daten-viz": "dist/cli.js", "daten-viz-mcp": "dist/server.js" }`
 
 ## References & Research
 
@@ -412,7 +429,6 @@ Folgende Features sind **bewusst nicht im MVP**:
 - [React Flow DatabaseSchemaNode](https://reactflow.dev/ui/components/database-schema-node)
 - [ELK.js Layout](https://reactflow.dev/examples/layout/elkjs)
 - [Vite JavaScript API](https://vite.dev/guide/api-javascript)
-- [Commander.js v14](https://github.com/tj/commander.js)
 - [Chokidar v5](https://www.npmjs.com/package/chokidar)
 
 ### Marktanalyse
@@ -420,3 +436,8 @@ Folgende Features sind **bewusst nicht im MVP**:
 - D2 Language (Open Source, CLI, aber kein ER+Prozess)
 - dbdiagram.io (DBML-basiert, kein AI)
 - Mermaid (LLM-freundlich, visuell limitiert)
+
+### Review-Protokoll (2026-03-30)
+- **Architecture Strategist:** Architektur solide, separate Prozesse noetig, Concurrency vereinfachen, Tests in Phase 1
+- **Code Simplicity Reviewer:** 14→7 Tools, 4 Dateien statt 8 Verzeichnisse, Format vereinfacht, ~45% weniger Code
+- **Security Sentinel:** 5 Findings (alle LOW-MEDIUM), Pfad-Validation + WebSocket-Origin + Name-Regex
