@@ -9,7 +9,10 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    datenVizPlugin(process.env.DATEN_VIZ_FILE || './schema.erd.json'),
+    datenVizPlugin({
+      erdFile: process.env.DATEN_VIZ_FILE || './schema.erd.json',
+      bpmnFile: process.env.DATEN_VIZ_BPMN_FILE || './process.bpmn.json',
+    }),
   ],
   resolve: {
     alias: {

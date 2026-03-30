@@ -2,17 +2,40 @@ import type { Plugin, ViteDevServer } from 'vite';
 import { watch } from 'chokidar';
 import { WebSocketServer, WebSocket } from 'ws';
 import { readFile, writeFile } from 'node:fs/promises';
-import { resolve, dirname } from 'node:path';
+import { resolve } from 'node:path';
 
-export function datenVizPlugin(erdFilePath: string): Plugin {
-  const schemaPath = resolve(erdFilePath);
-  const positionsPath = schemaPath.replace(/\.erd\.json$/, '.erd.pos.json');
+interface DatenVizPluginOptions {
+  erdFile: string;
+  bpmnFile: string;
+}
+
+export function datenVizPlugin(
+  erdFileOrOptions: string | DatenVizPluginOptions
+): Plugin {
+  const options: DatenVizPluginOptions =
+    typeof erdFileOrOptions === 'string'
+      ? { erdFile: erdFileOrOptions, bpmnFile: erdFileOrOptions.replace(/\.erd\.json$/, '.bpmn.json').replace(/^(.*)\/[^/]+$/, '$1/process.bpmn.json') }
+      : erdFileOrOptions;
+
+  const erdSchemaPath = resolve(options.erdFile);
+  const erdPositionsPath = erdSchemaPath.replace(/\.erd\.json$/, '.erd.pos.json');
+  const bpmnSchemaPath = resolve(options.bpmnFile);
+  const bpmnPositionsPath = bpmnSchemaPath.replace(/\.bpmn\.json$/, '.bpmn.pos.json');
+
   let wss: WebSocketServer;
+
+  function broadcast(msg: object) {
+    const data = JSON.stringify(msg);
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(data);
+      }
+    });
+  }
 
   return {
     name: 'daten-viz',
     configureServer(server: ViteDevServer) {
-      // WebSocket server on a subpath
       wss = new WebSocketServer({ noServer: true });
 
       if (!server.httpServer) return;
@@ -25,82 +48,128 @@ export function datenVizPlugin(erdFilePath: string): Plugin {
         }
       });
 
-      // File watcher — only watch .erd.json (schema), NOT .erd.pos.json
-      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-      const watcher = watch(schemaPath, { ignoreInitial: true });
-      watcher.on('change', () => {
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          const msg = JSON.stringify({ type: 'schema-changed' });
-          wss.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(msg);
-            }
-          });
+      // File watchers
+      let erdDebounce: ReturnType<typeof setTimeout> | null = null;
+      const erdWatcher = watch(erdSchemaPath, { ignoreInitial: true });
+      erdWatcher.on('change', () => {
+        if (erdDebounce) clearTimeout(erdDebounce);
+        erdDebounce = setTimeout(() => {
+          broadcast({ type: 'schema-changed', diagramType: 'erd' });
         }, 300);
       });
 
-      // API routes for schema and positions
+      let bpmnDebounce: ReturnType<typeof setTimeout> | null = null;
+      const bpmnWatcher = watch(bpmnSchemaPath, { ignoreInitial: true });
+      bpmnWatcher.on('change', () => {
+        if (bpmnDebounce) clearTimeout(bpmnDebounce);
+        bpmnDebounce = setTimeout(() => {
+          broadcast({ type: 'schema-changed', diagramType: 'bpmn' });
+        }, 300);
+      });
+
+      // API routes
       server.middlewares.use(async (req, res, next) => {
+        // === ERD Routes ===
         if (req.url === '/__daten-viz-api/schema' && req.method === 'GET') {
-          try {
-            const data = await readFile(schemaPath, 'utf-8');
-            res.setHeader('Content-Type', 'application/json');
-            res.end(data);
-          } catch (err: unknown) {
-            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-              res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({
-                format: 'daten-viz-erd-v1',
-                tables: {},
-                relations: [],
-              }));
-            } else {
-              res.statusCode = 500;
-              res.end('Internal Server Error');
-            }
-          }
-          return;
+          return serveFile(res, erdSchemaPath, {
+            format: 'daten-viz-erd-v1',
+            tables: {},
+            relations: [],
+          });
         }
 
         if (req.url === '/__daten-viz-api/positions') {
           if (req.method === 'GET') {
-            try {
-              const data = await readFile(positionsPath, 'utf-8');
-              res.setHeader('Content-Type', 'application/json');
-              res.end(data);
-            } catch (err: unknown) {
-              if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-                res.setHeader('Content-Type', 'application/json');
-                res.end('{}');
-              } else {
-                res.statusCode = 500;
-                res.end('Internal Server Error');
-              }
-            }
-            return;
+            return serveFile(res, erdPositionsPath, {});
           }
-
           if (req.method === 'PUT') {
-            let body = '';
-            req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-            req.on('end', async () => {
-              try {
-                JSON.parse(body); // Validate JSON
-                await writeFile(positionsPath, body, 'utf-8');
-                res.statusCode = 200;
-                res.end('OK');
-              } catch {
-                res.statusCode = 400;
-                res.end('Invalid JSON');
-              }
-            });
-            return;
+            return writeJsonBody(req, res, erdPositionsPath);
           }
+        }
+
+        // === BPMN Routes ===
+        if (req.url === '/__daten-viz-api/bpmn/schema' && req.method === 'GET') {
+          return serveFile(res, bpmnSchemaPath, {
+            format: 'daten-viz-bpmn-v1',
+            nodes: {},
+            flows: [],
+          });
+        }
+
+        if (req.url === '/__daten-viz-api/bpmn/positions') {
+          if (req.method === 'GET') {
+            return serveFile(res, bpmnPositionsPath, {});
+          }
+          if (req.method === 'PUT') {
+            return writeJsonBody(req, res, bpmnPositionsPath);
+          }
+        }
+
+        // === Files listing ===
+        if (req.url === '/__daten-viz-api/files' && req.method === 'GET') {
+          const files = [];
+
+          // Check if ERD file exists
+          try {
+            await readFile(erdSchemaPath, 'utf-8');
+            const name = erdSchemaPath.split('/').pop()?.replace('.erd.json', '') ?? 'schema';
+            files.push({ name: name + '.erd', path: erdSchemaPath.split('/').pop(), type: 'erd' });
+          } catch {}
+
+          // Check if BPMN file exists
+          try {
+            await readFile(bpmnSchemaPath, 'utf-8');
+            const name = bpmnSchemaPath.split('/').pop()?.replace('.bpmn.json', '') ?? 'process';
+            files.push({ name: name + '.bpmn', path: bpmnSchemaPath.split('/').pop(), type: 'bpmn' });
+          } catch {}
+
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(files));
+          return;
         }
 
         next();
       });
     },
   };
+}
+
+async function serveFile(
+  res: import('http').ServerResponse,
+  path: string,
+  fallback: object
+) {
+  try {
+    const data = await readFile(path, 'utf-8');
+    res.setHeader('Content-Type', 'application/json');
+    res.end(data);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify(fallback));
+    } else {
+      res.statusCode = 500;
+      res.end('Internal Server Error');
+    }
+  }
+}
+
+function writeJsonBody(
+  req: import('http').IncomingMessage,
+  res: import('http').ServerResponse,
+  path: string
+) {
+  let body = '';
+  req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+  req.on('end', async () => {
+    try {
+      JSON.parse(body); // Validate JSON
+      await writeFile(path, body, 'utf-8');
+      res.statusCode = 200;
+      res.end('OK');
+    } catch {
+      res.statusCode = 400;
+      res.end('Invalid JSON');
+    }
+  });
 }

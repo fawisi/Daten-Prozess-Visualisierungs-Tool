@@ -1,6 +1,5 @@
 import ELK from 'elkjs/lib/elk.bundled.js';
 import type { Node, Edge } from '@xyflow/react';
-import type { Positions } from '../../schema.js';
 
 const elk = new ELK();
 
@@ -12,36 +11,47 @@ const ELK_OPTIONS = {
   'elk.padding': '[top=20,left=20,bottom=20,right=20]',
 };
 
-// Estimate node dimensions based on column count
-function estimateNodeSize(columnCount: number) {
+// BPMN node fixed sizes
+const BPMN_NODE_SIZES: Record<string, { width: number; height: number }> = {
+  bpmnStart: { width: 40, height: 40 },
+  bpmnEnd: { width: 40, height: 40 },
+  bpmnTask: { width: 160, height: 60 },
+  bpmnGateway: { width: 48, height: 48 },
+};
+
+// Estimate node dimensions based on type
+function estimateNodeSize(node: Node): { width: number; height: number } {
+  // BPMN nodes have fixed sizes
+  if (node.type && BPMN_NODE_SIZES[node.type]) {
+    return BPMN_NODE_SIZES[node.type];
+  }
+
+  // ERD table nodes: size based on column count
+  const colCount = (node.data as { columns?: unknown[] })?.columns?.length || 1;
   const headerHeight = 36;
   const rowHeight = 28;
   return {
     width: 280,
-    height: headerHeight + rowHeight * columnCount + 8,
+    height: headerHeight + rowHeight * colCount + 8,
   };
 }
 
 export async function computeLayout(
   nodes: Node[],
   edges: Edge[],
-  existingPositions: Positions
+  existingPositions: Record<string, { x: number; y: number }>
 ): Promise<Node[]> {
-  // Split into nodes with and without existing positions
   const needsLayout = nodes.filter((n) => !existingPositions[n.id]);
 
   if (needsLayout.length === 0) {
-    // All nodes have positions — use them
     return nodes.map((n) => ({
       ...n,
       position: existingPositions[n.id] || n.position,
     }));
   }
 
-  // Run ELK only on nodes that need layout
   const elkNodes = needsLayout.map((n) => {
-    const colCount = (n.data as { columns: unknown[] }).columns?.length || 1;
-    const { width, height } = estimateNodeSize(colCount);
+    const { width, height } = estimateNodeSize(n);
     return { id: n.id, width, height };
   });
 
@@ -64,7 +74,6 @@ export async function computeLayout(
     edges: elkEdges,
   });
 
-  // Build a position map from ELK results
   const elkPositions: Record<string, { x: number; y: number }> = {};
   for (const child of layout.children || []) {
     elkPositions[child.id] = { x: child.x || 0, y: child.y || 0 };
