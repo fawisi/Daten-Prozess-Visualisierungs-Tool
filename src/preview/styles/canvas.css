@@ -1,122 +1,4 @@
 /* ========================================
-   Daten-Viz: Dark Blueprint Theme
-   ======================================== */
-
-:root {
-  /* Canvas */
-  --canvas-bg: #0B0E14;
-  --canvas-grid-dot: #1A2030;
-  --canvas-grid-dot-accent: #243044;
-
-  /* Node (Table Card) */
-  --node-bg: #111820;
-  --node-border: #1E2A3A;
-  --node-border-hover: #2D6B9E;
-  --node-border-selected: #3B9EFF;
-  --node-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
-
-  /* Header (Table Name) */
-  --header-bg: #141C28;
-  --header-text: #E2E8F0;
-  --header-icon: #3B9EFF;
-
-  /* Columns */
-  --column-text: #94A3B8;
-  --column-text-pk: #E2E8F0;
-  --column-divider: #1A2333;
-
-  /* Type Badges */
-  --type-badge-bg: #1A2333;
-  --type-badge-text: #64748B;
-  --type-badge-text-pk: #F59E0B;
-
-  /* Primary Key Indicator */
-  --pk-amber: #F59E0B;
-  --pk-amber-dim: rgba(245, 158, 11, 0.15);
-
-  /* Nullable Indicator */
-  --nullable-text: #475569;
-
-  /* Edges (Relations) */
-  --edge-stroke: #2D4A6E;
-  --edge-stroke-hover: #3B9EFF;
-  --edge-label-bg: #111820;
-  --edge-label-text: #64748B;
-  --edge-label-text-hover: #94A3B8;
-
-  /* Controls & UI Chrome */
-  --controls-bg: #111820;
-  --controls-border: #1E2A3A;
-  --controls-icon: #64748B;
-  --controls-icon-hover: #E2E8F0;
-
-  /* MiniMap */
-  --minimap-bg: #0B0E14;
-  --minimap-node: #1E2A3A;
-  --minimap-viewport: rgba(59, 158, 255, 0.25);
-
-  /* Status / Feedback */
-  --status-connected: #22C55E;
-  --status-reconnecting: #F59E0B;
-  --status-error: #EF4444;
-
-  /* Empty State */
-  --empty-text: #475569;
-  --empty-border: #1E2A3A;
-
-  /* Typography */
-  --font-header: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
-  --font-header-size: 13px;
-  --font-header-weight: 600;
-  --font-header-tracking: 0.02em;
-
-  --font-column: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
-  --font-column-size: 12px;
-  --font-column-weight: 400;
-
-  --font-type: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
-  --font-type-size: 10px;
-  --font-type-weight: 400;
-  --font-type-tracking: 0.03em;
-
-  --font-cardinality: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
-  --font-cardinality-size: 10px;
-  --font-cardinality-weight: 500;
-
-  --font-ui: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
-  --font-ui-size: 11px;
-
-  /* Spacing */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-}
-
-/* ========================================
-   Global Reset
-   ======================================== */
-
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html, body, #root {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: var(--canvas-bg);
-  color: var(--column-text);
-  font-family: var(--font-ui);
-  font-size: var(--font-ui-size);
-}
-
-/* ========================================
    React Flow Overrides
    ======================================== */
 
@@ -200,8 +82,8 @@ html, body, #root {
 .table-node__header {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  gap: 8px;
+  padding: 8px 12px;
   background: var(--header-bg);
   border-bottom: 1px solid var(--node-border);
 }
@@ -215,17 +97,17 @@ html, body, #root {
 }
 
 .table-node__name {
-  font-family: var(--font-header);
-  font-size: var(--font-header-size);
-  font-weight: var(--font-header-weight);
-  letter-spacing: var(--font-header-tracking);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--header-text);
 }
 
 .table-node__count {
   margin-left: auto;
-  font-family: var(--font-type);
-  font-size: var(--font-type-size);
+  font-family: var(--font-mono);
+  font-size: 10px;
   color: var(--type-badge-text);
   background: var(--type-badge-bg);
   padding: 1px 6px;
@@ -233,15 +115,15 @@ html, body, #root {
 }
 
 .table-node__body {
-  padding: var(--space-1) 0;
+  padding: 4px 0;
 }
 
 .table-node__row {
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
+  gap: 8px;
+  padding: 4px 12px;
   position: relative;
   transition: background 0.1s ease;
 }
@@ -263,9 +145,9 @@ html, body, #root {
 }
 
 .table-node__col-name {
-  font-family: var(--font-column);
-  font-size: var(--font-column-size);
-  font-weight: var(--font-column-weight);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
   color: var(--column-text);
   white-space: nowrap;
   overflow: hidden;
@@ -277,9 +159,9 @@ html, body, #root {
 }
 
 .table-node__col-type {
-  font-family: var(--font-type);
-  font-size: var(--font-type-size);
-  letter-spacing: var(--font-type-tracking);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
   color: var(--type-badge-text);
   background: var(--type-badge-bg);
   padding: 1px 6px;
@@ -293,7 +175,7 @@ html, body, #root {
 }
 
 .badge {
-  font-family: var(--font-type);
+  font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 600;
   padding: 1px 4px;
@@ -313,7 +195,7 @@ html, body, #root {
   font-weight: 400;
 }
 
-/* React Flow Handles — invisible until hover */
+/* React Flow Handles */
 .table-node .react-flow__handle {
   width: 8px;
   height: 8px;
@@ -336,9 +218,9 @@ html, body, #root {
    ======================================== */
 
 .edge-label {
-  font-family: var(--font-cardinality);
-  font-size: var(--font-cardinality-size);
-  font-weight: var(--font-cardinality-weight);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
   color: var(--edge-label-text);
   background: var(--edge-label-bg);
   border: 1px solid var(--node-border);
@@ -364,8 +246,8 @@ html, body, #root {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-ui);
-  font-size: var(--font-ui-size);
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--empty-text);
   z-index: 5;
 }
@@ -413,16 +295,16 @@ html, body, #root {
 }
 
 .empty-state__title {
-  font-family: var(--font-header);
+  font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 600;
   color: var(--empty-text);
-  margin-bottom: var(--space-2);
+  margin-bottom: 8px;
 }
 
 .empty-state__hint {
-  font-family: var(--font-ui);
-  font-size: var(--font-ui-size);
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--empty-text);
   max-width: 320px;
   line-height: 1.6;
@@ -430,12 +312,12 @@ html, body, #root {
 
 .empty-state__code {
   display: inline-block;
-  margin-top: var(--space-3);
-  font-family: var(--font-column);
+  margin-top: 12px;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--column-text);
   background: var(--type-badge-bg);
-  padding: var(--space-1) 10px;
+  padding: 4px 10px;
   border-radius: 4px;
   border: 1px dashed var(--empty-border);
 }
@@ -457,4 +339,89 @@ html, body, #root {
 
 .table-node--entering {
   animation: node-enter 0.2s ease-out;
+}
+
+/* ========================================
+   BPMN Nodes
+   ======================================== */
+
+.bpmn-node {
+  font-family: var(--font-mono);
+}
+
+.bpmn-start-event {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--status-connected);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bpmn-end-event {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 4px solid var(--status-error);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bpmn-task {
+  background: var(--node-bg);
+  border: 1px solid var(--node-border);
+  border-radius: 8px;
+  box-shadow: var(--node-shadow);
+  padding: 12px 16px;
+  min-width: 120px;
+  max-width: 200px;
+  transition: border-color 0.15s ease;
+}
+
+.bpmn-task:hover {
+  border-color: var(--node-border-hover);
+}
+
+.bpmn-task__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--header-text);
+  text-align: center;
+}
+
+.bpmn-task__description {
+  font-size: 10px;
+  color: var(--column-text);
+  text-align: center;
+  margin-top: 4px;
+}
+
+.bpmn-gateway {
+  width: 48px;
+  height: 48px;
+  transform: rotate(45deg);
+  background: var(--node-bg);
+  border: 2px solid var(--pk-amber);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bpmn-gateway__icon {
+  transform: rotate(-45deg);
+  color: var(--pk-amber);
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* BPMN Handles */
+.bpmn-node .react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: var(--edge-stroke);
+  border: 2px solid var(--canvas-bg);
 }

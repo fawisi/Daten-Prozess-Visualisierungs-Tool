@@ -4,23 +4,30 @@ import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { DiagramStore } from './store.js';
 import { registerTools } from './tools.js';
+import { ProcessStore } from './bpmn/store.js';
+import { registerProcessTools } from './bpmn/tools.js';
 
 const { values } = parseArgs({
   options: {
     file: { type: 'string', default: './schema.erd.json' },
+    'bpmn-file': { type: 'string', default: './process.bpmn.json' },
   },
   strict: false,
 });
 
-const filePath = resolve(values.file as string);
-const store = new DiagramStore(filePath);
+const erdPath = resolve(values.file as string);
+const bpmnPath = resolve(values['bpmn-file'] as string);
+
+const erdStore = new DiagramStore(erdPath);
+const bpmnStore = new ProcessStore(bpmnPath);
 
 const server = new McpServer({
   name: 'daten-viz-mcp',
-  version: '0.1.0',
+  version: '0.2.0',
 });
 
-registerTools(server, store);
+registerTools(server, erdStore);
+registerProcessTools(server, bpmnStore);
 
 async function main() {
   const transport = new StdioServerTransport();

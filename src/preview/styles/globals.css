@@ -1,0 +1,191 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ========================================
+   Dark Blueprint Theme — shadcn OKLCH Variables
+   Always dark mode — no :root light theme needed
+   ======================================== */
+
+:root {
+  --radius: 0.375rem;
+}
+
+.dark {
+  /* Core — Blueprint Dark */
+  --background: oklch(0.13 0.015 250);       /* #0B0E14 canvas */
+  --foreground: oklch(0.90 0.01 250);         /* #E2E8F0 light text */
+
+  /* Cards — Node Background */
+  --card: oklch(0.16 0.015 250);              /* #111820 */
+  --card-foreground: oklch(0.90 0.01 250);    /* #E2E8F0 */
+
+  /* Popover */
+  --popover: oklch(0.18 0.015 250);           /* #141C28 */
+  --popover-foreground: oklch(0.90 0.01 250);
+
+  /* Primary — Blueprint Blue */
+  --primary: oklch(0.65 0.18 250);            /* #3B9EFF */
+  --primary-foreground: oklch(0.13 0.015 250);
+
+  /* Secondary */
+  --secondary: oklch(0.20 0.02 250);          /* #1A2333 */
+  --secondary-foreground: oklch(0.70 0.01 250); /* #94A3B8 */
+
+  /* Muted */
+  --muted: oklch(0.20 0.02 250);              /* #1A2333 */
+  --muted-foreground: oklch(0.55 0.01 250);   /* #64748B */
+
+  /* Accent */
+  --accent: oklch(0.22 0.02 250);             /* #1E2A3A */
+  --accent-foreground: oklch(0.90 0.01 250);
+
+  /* Destructive — Red */
+  --destructive: oklch(0.63 0.24 25);         /* #EF4444 */
+  --destructive-foreground: oklch(0.95 0 0);
+
+  /* Border */
+  --border: oklch(0.22 0.02 250);             /* #1E2A3A */
+  --input: oklch(0.25 0.02 250);
+  --ring: oklch(0.65 0.18 250);               /* Blueprint Blue */
+
+  /* Chart Colors */
+  --chart-1: oklch(0.65 0.18 250);            /* Blue */
+  --chart-2: oklch(0.70 0.15 160);            /* Green */
+  --chart-3: oklch(0.78 0.18 85);             /* Amber */
+  --chart-4: oklch(0.65 0.24 25);             /* Red */
+  --chart-5: oklch(0.65 0.20 300);            /* Purple */
+
+  /* Sidebar — slightly lighter than canvas */
+  --sidebar: oklch(0.15 0.015 250);           /* between canvas and card */
+  --sidebar-foreground: oklch(0.90 0.01 250);
+  --sidebar-primary: oklch(0.65 0.18 250);
+  --sidebar-primary-foreground: oklch(0.95 0 0);
+  --sidebar-accent: oklch(0.20 0.02 250);
+  --sidebar-accent-foreground: oklch(0.90 0.01 250);
+  --sidebar-border: oklch(0.22 0.02 250);
+  --sidebar-ring: oklch(0.65 0.18 250);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 8px);
+}
+
+/* ========================================
+   Blueprint-Specific CSS Custom Properties
+   (Used by React Flow canvas components)
+   ======================================== */
+
+:root {
+  /* Canvas */
+  --canvas-bg: #0B0E14;
+  --canvas-grid-dot: #1A2030;
+
+  /* Node (Table Card) */
+  --node-bg: #111820;
+  --node-border: #1E2A3A;
+  --node-border-hover: #2D6B9E;
+  --node-border-selected: #3B9EFF;
+  --node-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+
+  /* Header */
+  --header-bg: #141C28;
+  --header-text: #E2E8F0;
+  --header-icon: #3B9EFF;
+
+  /* Columns */
+  --column-text: #94A3B8;
+  --column-text-pk: #E2E8F0;
+  --column-divider: #1A2333;
+
+  /* Type Badges */
+  --type-badge-bg: #1A2333;
+  --type-badge-text: #64748B;
+  --type-badge-text-pk: #F59E0B;
+
+  /* Primary Key */
+  --pk-amber: #F59E0B;
+  --pk-amber-dim: rgba(245, 158, 11, 0.15);
+
+  /* Nullable */
+  --nullable-text: #475569;
+
+  /* Edges */
+  --edge-stroke: #2D4A6E;
+  --edge-stroke-hover: #3B9EFF;
+  --edge-label-bg: #111820;
+  --edge-label-text: #64748B;
+  --edge-label-text-hover: #94A3B8;
+
+  /* Controls */
+  --controls-bg: #111820;
+  --controls-border: #1E2A3A;
+  --controls-icon: #64748B;
+  --controls-icon-hover: #E2E8F0;
+
+  /* MiniMap */
+  --minimap-bg: #0B0E14;
+  --minimap-node: #1E2A3A;
+
+  /* Status */
+  --status-connected: #22C55E;
+  --status-reconnecting: #F59E0B;
+  --status-error: #EF4444;
+
+  /* Empty State */
+  --empty-text: #475569;
+  --empty-border: #1E2A3A;
+
+  /* Typography */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+}
+
+/* ========================================
+   Base Styles
+   ======================================== */
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-mono);
+}

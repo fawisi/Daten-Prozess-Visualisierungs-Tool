@@ -1,73 +1,79 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { applyNodeChanges } from '@xyflow/react';
 import type { Node, Edge, NodeChange } from '@xyflow/react';
-import type { Diagram, Positions } from '../../schema.js';
-import type { ConnectionStatus } from '../components/StatusIndicator.js';
+import type { Process, ProcessPositions } from '../../bpmn/schema.js';
+import type { ConnectionStatus } from '../components/shared/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
 
 const WS_PATH = '/__daten-viz-ws';
 const RECONNECT_INTERVAL = 2000;
 const POSITION_WRITE_DEBOUNCE = 500;
 
-function diagramToNodesAndEdges(diagram: Diagram): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = Object.entries(diagram.tables).map(([name, table]) => ({
-    id: name,
-    type: 'table',
+const NODE_TYPE_MAP: Record<string, string> = {
+  'start-event': 'bpmnStart',
+  'end-event': 'bpmnEnd',
+  'task': 'bpmnTask',
+  'gateway': 'bpmnGateway',
+};
+
+function processToNodesAndEdges(process: Process): { nodes: Node[]; edges: Edge[] } {
+  const nodes: Node[] = Object.entries(process.nodes).map(([id, node]) => ({
+    id,
+    type: NODE_TYPE_MAP[node.type] ?? 'bpmnTask',
     position: { x: 0, y: 0 },
     data: {
-      label: name,
-      columns: table.columns,
-      description: table.description,
+      label: node.label,
+      description: node.description,
+      nodeType: node.type,
+      gatewayType: node.gatewayType,
     },
   }));
 
-  const edges: Edge[] = diagram.relations.map((rel, i) => ({
-    id: `rel-${i}-${rel.from.table}-${rel.from.column}`,
-    source: rel.from.table,
-    sourceHandle: `${rel.from.column}-source`,
-    target: rel.to.table,
-    targetHandle: `${rel.to.column}-target`,
-    type: 'relation',
-    data: { relationType: rel.type },
+  const edges: Edge[] = process.flows.map((flow, i) => ({
+    id: `flow-${i}-${flow.from}-${flow.to}`,
+    source: flow.from,
+    target: flow.to,
+    type: 'sequenceFlow',
+    data: { label: flow.label },
   }));
 
   return { nodes, edges };
 }
 
-export function useDiagramSync() {
+export function useProcessSync() {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [isEmpty, setIsEmpty] = useState(true);
-  const positionsRef = useRef<Positions>({});
+  const positionsRef = useRef<ProcessPositions>({});
   const writeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const loadSchema = useCallback(async () => {
     try {
       const [schemaRes, posRes] = await Promise.all([
-        fetch('/__daten-viz-api/schema'),
-        fetch('/__daten-viz-api/positions'),
+        fetch('/__daten-viz-api/bpmn/schema'),
+        fetch('/__daten-viz-api/bpmn/positions'),
       ]);
-      const diagram: Diagram = await schemaRes.json();
-      const positions: Positions = posRes.ok ? await posRes.json() : {};
+      const process: Process = await schemaRes.json();
+      const positions: ProcessPositions = posRes.ok ? await posRes.json() : {};
       positionsRef.current = positions;
 
-      const tableCount = Object.keys(diagram.tables).length;
-      setIsEmpty(tableCount === 0);
+      const nodeCount = Object.keys(process.nodes).length;
+      setIsEmpty(nodeCount === 0);
 
-      if (tableCount === 0) {
+      if (nodeCount === 0) {
         setNodes([]);
         setEdges([]);
         return;
       }
 
-      const { nodes: rawNodes, edges: rawEdges } = diagramToNodesAndEdges(diagram);
+      const { nodes: rawNodes, edges: rawEdges } = processToNodesAndEdges(process);
       const laidOut = await computeLayout(rawNodes, rawEdges, positions);
       setNodes(laidOut);
       setEdges(rawEdges);
     } catch (err) {
-      console.error('Failed to load schema:', err);
+      console.error('Failed to load BPMN schema:', err);
     }
   }, []);
 
@@ -84,14 +90,14 @@ export function useDiagramSync() {
       ws.onopen = () => {
         if (mounted) {
           setStatus('connected');
-          loadSchema(); // Full reload on connect
+          loadSchema();
         }
       };
 
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'schema-changed' && (!msg.diagramType || msg.diagramType === 'erd')) {
+          if (msg.type === 'schema-changed' && msg.diagramType === 'bpmn') {
             loadSchema();
           }
         } catch {
@@ -121,7 +127,7 @@ export function useDiagramSync() {
 
   // Debounced position writer
   const savePositions = useCallback((updatedNodes: Node[]) => {
-    const positions: Positions = {};
+    const positions: ProcessPositions = {};
     for (const node of updatedNodes) {
       positions[node.id] = { x: node.position.x, y: node.position.y };
     }
@@ -131,11 +137,11 @@ export function useDiagramSync() {
       clearTimeout(writeTimeoutRef.current);
     }
     writeTimeoutRef.current = setTimeout(() => {
-      fetch('/__daten-viz-api/positions', {
+      fetch('/__daten-viz-api/bpmn/positions', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(positions),
-      }).catch((err) => console.error('Failed to save positions:', err));
+      }).catch((err) => console.error('Failed to save BPMN positions:', err));
     }, POSITION_WRITE_DEBOUNCE);
   }, []);
 
@@ -143,8 +149,6 @@ export function useDiagramSync() {
     (changes: NodeChange[]) => {
       setNodes((prev) => {
         const updated = applyNodeChanges(changes, prev);
-
-        // Save positions on drag
         const hasDrag = changes.some((c) => c.type === 'position');
         if (hasDrag) {
           savePositions(updated);
