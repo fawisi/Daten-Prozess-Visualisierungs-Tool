@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--config", "vite.config.ts"],
+      "port": 5555,
+      "env": {
+        "DATEN_VIZ_FILE": "./schema.erd.json",
+        "DATEN_VIZ_BPMN_FILE": "./process.bpmn.json"
+      }
+    }
+  ]
+}

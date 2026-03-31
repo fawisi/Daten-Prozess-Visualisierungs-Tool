@@ -33,15 +33,20 @@ export function DiagramTabs({ tabs, activeTab, onTabSelect, onTabClose }: Diagra
                 <GitBranch className="mr-1.5 h-3 w-3" />
               )}
               {tab.file.name}
-              <button
-                className="ml-2 rounded p-0.5 hover:bg-accent"
+              <span
+                role="button"
+                tabIndex={0}
+                className="ml-2 rounded p-0.5 hover:bg-accent cursor-pointer"
                 onClick={(e) => {
                   e.stopPropagation();
                   onTabClose(tab.file.path);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onTabClose(tab.file.path);
+                }}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </span>
             </TabsTrigger>
           ))}
         </TabsList>
