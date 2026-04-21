@@ -73,7 +73,7 @@ describe('FlowSchema', () => {
 describe('ProcessSchema', () => {
   it('validates a complete process', () => {
     const result = ProcessSchema.safeParse({
-      format: 'daten-viz-bpmn-v1',
+      format: 'viso-bpmn-v1',
       name: 'Test Process',
       nodes: {
         start: { type: 'start-event', label: 'Begin' },
@@ -90,7 +90,7 @@ describe('ProcessSchema', () => {
 
   it('rejects wrong format', () => {
     const result = ProcessSchema.safeParse({
-      format: 'daten-viz-erd-v1',
+      format: 'viso-erd-v1',
       nodes: {},
       flows: [],
     });

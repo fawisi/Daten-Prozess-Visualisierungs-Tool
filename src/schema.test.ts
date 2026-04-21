@@ -60,7 +60,7 @@ describe('DiagramSchema', () => {
 
   it('validates a full diagram', () => {
     const diagram = {
-      format: 'daten-viz-erd-v1',
+      format: 'viso-erd-v1',
       name: 'Test DB',
       tables: {
         users: {

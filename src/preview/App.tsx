@@ -120,7 +120,7 @@ export function App() {
 
   // Load available files from the API
   useEffect(() => {
-    fetch('/__daten-viz-api/files')
+    fetch('/__viso-api/files')
       .then((res) => res.json())
       .then((data: DiagramFile[]) => {
         setFiles(data);

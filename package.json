@@ -1,10 +1,10 @@
 {
-  "name": "daten-viz-mcp",
-  "version": "0.2.0",
-  "description": "Agent-native MCP server for ER diagram and BPMN process visualization",
+  "name": "viso-mcp",
+  "version": "1.0.0",
+  "description": "Agent-native MCP server for ER diagram (DBML) and BPMN process visualization",
   "type": "module",
   "bin": {
-    "daten-viz-mcp": "./dist/server.cjs"
+    "viso-mcp": "./dist/server.cjs"
   },
   "scripts": {
     "build": "tsup",
@@ -16,9 +16,13 @@
   "keywords": [
     "mcp",
     "er-diagram",
+    "dbml",
+    "bpmn",
     "database",
     "visualization",
-    "ai-agent"
+    "ai-agent",
+    "claude",
+    "cursor"
   ],
   "license": "MIT",
   "dependencies": {

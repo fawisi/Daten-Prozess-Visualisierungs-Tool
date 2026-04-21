@@ -14,24 +14,27 @@ if (command === 'serve') {
   const fileArg = positionals[1] || './schema.erd.json';
   const absFile = resolve(fileArg);
 
-  // Spawn vite with the project's vite.config.ts
   const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const child = spawn('npx', ['vite', '--config', resolve(pkgRoot, 'vite.config.ts')], {
     cwd: pkgRoot,
     stdio: 'inherit',
-    env: { ...process.env, DATEN_VIZ_FILE: absFile },
+    env: {
+      ...process.env,
+      VISO_FILE: absFile,
+      DATEN_VIZ_FILE: absFile, // deprecated alias, removed in v1.1
+    },
   });
 
   child.on('exit', (code) => process.exit(code ?? 0));
 } else {
   process.stderr.write(
-    `daten-viz - ER Diagram Visualization Tool
+    `viso-mcp - Agent-native diagram editor (ERD/DBML + BPMN)
 
 Usage:
-  daten-viz serve [file]    Start browser preview (default: ./schema.erd.json)
+  viso-mcp serve [file]    Start browser preview (default: ./schema.erd.json)
 
 MCP Server:
-  daten-viz-mcp [--file path]    Start MCP server via stdio
+  viso-mcp [--file path]    Start MCP server via stdio
 `
   );
   process.exit(command ? 1 : 0);

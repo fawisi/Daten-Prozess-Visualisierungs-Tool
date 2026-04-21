@@ -30,7 +30,7 @@ describe('ProcessStore', () => {
 
   it('save and load roundtrip', async () => {
     const process: Process = {
-      format: 'daten-viz-bpmn-v1',
+      format: 'viso-bpmn-v1',
       name: 'Test',
       nodes: {
         start: { type: 'start-event', label: 'Begin' },

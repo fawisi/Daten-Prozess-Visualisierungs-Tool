@@ -6,7 +6,7 @@ export default defineConfig([
       server: 'src/server.ts',
       'export-mermaid': 'src/export/mermaid-cli.ts',
     },
-    format: ['cjs'],
+    format: ['cjs', 'esm'],
     target: 'node20',
     dts: false,
     clean: true,

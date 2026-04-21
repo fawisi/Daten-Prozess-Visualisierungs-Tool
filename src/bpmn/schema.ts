@@ -37,7 +37,7 @@ export const FlowSchema = z.object({
 });
 
 export const ProcessSchema = z.object({
-  format: z.literal('daten-viz-bpmn-v1'),
+  format: z.literal('viso-bpmn-v1'),
   name: z.string().max(256).optional().describe('Process name'),
   nodes: z.record(NodeIdentifier, ProcessNodeSchema),
   flows: z.array(FlowSchema),
@@ -59,7 +59,7 @@ export type ProcessPositions = z.infer<typeof ProcessPositionsSchema>;
 // Empty process factory
 export function emptyProcess(): Process {
   return {
-    format: 'daten-viz-bpmn-v1',
+    format: 'viso-bpmn-v1',
     nodes: {},
     flows: [],
   };

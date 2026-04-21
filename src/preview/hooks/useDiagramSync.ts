@@ -5,7 +5,7 @@ import type { Diagram, Positions } from '../../schema.js';
 import type { ConnectionStatus } from '../components/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
 
-const WS_PATH = '/__daten-viz-ws';
+const WS_PATH = '/__viso-ws';
 const RECONNECT_INTERVAL = 2000;
 const POSITION_WRITE_DEBOUNCE = 500;
 
@@ -46,8 +46,8 @@ export function useDiagramSync() {
   const loadSchema = useCallback(async () => {
     try {
       const [schemaRes, posRes] = await Promise.all([
-        fetch('/__daten-viz-api/schema'),
-        fetch('/__daten-viz-api/positions'),
+        fetch('/__viso-api/schema'),
+        fetch('/__viso-api/positions'),
       ]);
       const diagram: Diagram = await schemaRes.json();
       const positions: Positions = posRes.ok ? await posRes.json() : {};
@@ -131,7 +131,7 @@ export function useDiagramSync() {
       clearTimeout(writeTimeoutRef.current);
     }
     writeTimeoutRef.current = setTimeout(() => {
-      fetch('/__daten-viz-api/positions', {
+      fetch('/__viso-api/positions', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(positions),

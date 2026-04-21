@@ -7,8 +7,8 @@
       "runtimeArgs": ["vite", "--config", "vite.config.ts"],
       "port": 5555,
       "env": {
-        "DATEN_VIZ_FILE": "./schema.erd.json",
-        "DATEN_VIZ_BPMN_FILE": "./process.bpmn.json"
+        "VISO_FILE": "./schema.erd.json",
+        "VISO_BPMN_FILE": "./process.bpmn.json"
       }
     }
   ]

@@ -5,7 +5,7 @@ import type { Process, ProcessPositions } from '../../bpmn/schema.js';
 import type { ConnectionStatus } from '../components/shared/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
 
-const WS_PATH = '/__daten-viz-ws';
+const WS_PATH = '/__viso-ws';
 const RECONNECT_INTERVAL = 2000;
 const POSITION_WRITE_DEBOUNCE = 500;
 
@@ -52,8 +52,8 @@ export function useProcessSync() {
   const loadSchema = useCallback(async () => {
     try {
       const [schemaRes, posRes] = await Promise.all([
-        fetch('/__daten-viz-api/bpmn/schema'),
-        fetch('/__daten-viz-api/bpmn/positions'),
+        fetch('/__viso-api/bpmn/schema'),
+        fetch('/__viso-api/bpmn/positions'),
       ]);
       const process: Process = await schemaRes.json();
       const positions: ProcessPositions = posRes.ok ? await posRes.json() : {};
@@ -137,7 +137,7 @@ export function useProcessSync() {
       clearTimeout(writeTimeoutRef.current);
     }
     writeTimeoutRef.current = setTimeout(() => {
-      fetch('/__daten-viz-api/bpmn/positions', {
+      fetch('/__viso-api/bpmn/positions', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(positions),

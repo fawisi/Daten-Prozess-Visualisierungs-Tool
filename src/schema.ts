@@ -55,7 +55,7 @@ export const RelationSchema = z.object({
 });
 
 export const DiagramSchema = z.object({
-  format: z.literal('daten-viz-erd-v1'),
+  format: z.literal('viso-erd-v1'),
   name: z.string().max(256).optional(),
   tables: z.record(SafeIdentifier, TableSchema),
   relations: z.array(RelationSchema),
@@ -77,7 +77,7 @@ export type Positions = z.infer<typeof PositionsSchema>;
 // Empty diagram factory
 export function emptyDiagram(): Diagram {
   return {
-    format: 'daten-viz-erd-v1',
+    format: 'viso-erd-v1',
     tables: {},
     relations: [],
   };

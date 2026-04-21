@@ -4,15 +4,15 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-interface DatenVizPluginOptions {
+interface VisoPluginOptions {
   erdFile: string;
   bpmnFile: string;
 }
 
-export function datenVizPlugin(
-  erdFileOrOptions: string | DatenVizPluginOptions
+export function visoPlugin(
+  erdFileOrOptions: string | VisoPluginOptions
 ): Plugin {
-  const options: DatenVizPluginOptions =
+  const options: VisoPluginOptions =
     typeof erdFileOrOptions === 'string'
       ? { erdFile: erdFileOrOptions, bpmnFile: erdFileOrOptions.replace(/\.erd\.json$/, '.bpmn.json').replace(/^(.*)\/[^/]+$/, '$1/process.bpmn.json') }
       : erdFileOrOptions;
@@ -34,14 +34,14 @@ export function datenVizPlugin(
   }
 
   return {
-    name: 'daten-viz',
+    name: 'viso',
     configureServer(server: ViteDevServer) {
       wss = new WebSocketServer({ noServer: true });
 
       if (!server.httpServer) return;
 
       server.httpServer.on('upgrade', (req, socket, head) => {
-        if (req.url === '/__daten-viz-ws') {
+        if (req.url === '/__viso-ws') {
           wss.handleUpgrade(req, socket, head, (ws) => {
             wss.emit('connection', ws, req);
           });
@@ -70,15 +70,15 @@ export function datenVizPlugin(
       // API routes
       server.middlewares.use(async (req, res, next) => {
         // === ERD Routes ===
-        if (req.url === '/__daten-viz-api/schema' && req.method === 'GET') {
+        if (req.url === '/__viso-api/schema' && req.method === 'GET') {
           return serveFile(res, erdSchemaPath, {
-            format: 'daten-viz-erd-v1',
+            format: 'viso-erd-v1',
             tables: {},
             relations: [],
           });
         }
 
-        if (req.url === '/__daten-viz-api/positions') {
+        if (req.url === '/__viso-api/positions') {
           if (req.method === 'GET') {
             return serveFile(res, erdPositionsPath, {});
           }
@@ -88,15 +88,15 @@ export function datenVizPlugin(
         }
 
         // === BPMN Routes ===
-        if (req.url === '/__daten-viz-api/bpmn/schema' && req.method === 'GET') {
+        if (req.url === '/__viso-api/bpmn/schema' && req.method === 'GET') {
           return serveFile(res, bpmnSchemaPath, {
-            format: 'daten-viz-bpmn-v1',
+            format: 'viso-bpmn-v1',
             nodes: {},
             flows: [],
           });
         }
 
-        if (req.url === '/__daten-viz-api/bpmn/positions') {
+        if (req.url === '/__viso-api/bpmn/positions') {
           if (req.method === 'GET') {
             return serveFile(res, bpmnPositionsPath, {});
           }
@@ -106,7 +106,7 @@ export function datenVizPlugin(
         }
 
         // === Files listing ===
-        if (req.url === '/__daten-viz-api/files' && req.method === 'GET') {
+        if (req.url === '/__viso-api/files' && req.method === 'GET') {
           const files = [];
 
           // Check if ERD file exists

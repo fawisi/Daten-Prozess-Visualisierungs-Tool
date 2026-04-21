@@ -4,7 +4,7 @@ import type { Process } from './schema.js';
 
 describe('processToMermaid', () => {
   const sampleProcess: Process = {
-    format: 'daten-viz-bpmn-v1',
+    format: 'viso-bpmn-v1',
     name: 'Order Process',
     nodes: {
       start: { type: 'start-event', label: 'Order received' },

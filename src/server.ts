@@ -22,8 +22,8 @@ const erdStore = new DiagramStore(erdPath);
 const bpmnStore = new ProcessStore(bpmnPath);
 
 const server = new McpServer({
-  name: 'daten-viz-mcp',
-  version: '0.2.0',
+  name: 'viso-mcp',
+  version: '1.0.0',
 });
 
 registerTools(server, erdStore);
