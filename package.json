@@ -4,7 +4,7 @@
   "description": "Agent-native MCP server for ER diagram (DBML) and BPMN process visualization",
   "type": "module",
   "bin": {
-    "viso-mcp": "./dist/server.cjs"
+    "viso-mcp": "./dist/cli.cjs"
   },
   "scripts": {
     "build": "tsup",

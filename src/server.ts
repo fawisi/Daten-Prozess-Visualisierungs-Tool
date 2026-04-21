@@ -7,30 +7,16 @@ import { DbmlStore } from './dbml-store.js';
 import { registerTools } from './tools.js';
 import { ProcessStore } from './bpmn/store.js';
 import { registerProcessTools } from './bpmn/tools.js';
-import { runMigrateCli } from './migrate-cli.js';
 import type { ErdStore } from './erd-store-interface.js';
 
-async function main() {
-  // `viso-mcp migrate ./schema.erd.json ...` dispatches to the one-shot CLI
-  // before any MCP transport boots. The full subcommand router (init,
-  // export, serve) lands in Phase 3; keeping this here for now so Phase 1
-  // migrations are reachable via the single `viso-mcp` binary.
-  const argv = process.argv.slice(2);
-  if (argv[0] === 'migrate') {
-    const code = await runMigrateCli(argv.slice(1));
-    process.exit(code);
-  }
+export interface McpServerOptions {
+  erdFile?: string;
+  bpmnFile?: string;
+}
 
-  const { values } = parseArgs({
-    options: {
-      file: { type: 'string', default: './schema.dbml' },
-      'bpmn-file': { type: 'string', default: './process.bpmn.json' },
-    },
-    strict: false,
-  });
-
-  const erdPath = resolve(values.file as string);
-  const bpmnPath = resolve(values['bpmn-file'] as string);
+export async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
+  const erdPath = resolve(options.erdFile ?? './schema.dbml');
+  const bpmnPath = resolve(options.bpmnFile ?? './process.bpmn.json');
 
   const erdStore: ErdStore = selectErdStore(erdPath);
   const bpmnStore = new ProcessStore(bpmnPath);
@@ -57,7 +43,23 @@ function selectErdStore(path: string): ErdStore {
   return new DbmlStore(path);
 }
 
-main().catch((err) => {
-  process.stderr.write(`Fatal: ${err}\n`);
-  process.exit(1);
-});
+// When invoked directly (e.g. `node dist/server.cjs --file ./schema.dbml`)
+// fall through to the MCP stdio server. The full subcommand dispatcher
+// lives in src/cli.ts which is the package's published bin.
+if (process.argv[1]?.endsWith('server.cjs') || process.argv[1]?.endsWith('server.js')) {
+  const { values } = parseArgs({
+    options: {
+      file: { type: 'string', default: './schema.dbml' },
+      'bpmn-file': { type: 'string', default: './process.bpmn.json' },
+    },
+    strict: false,
+  });
+
+  startMcpServer({
+    erdFile: values.file as string,
+    bpmnFile: values['bpmn-file'] as string,
+  }).catch((err) => {
+    process.stderr.write(`Fatal: ${err}\n`);
+    process.exit(1);
+  });
+}
