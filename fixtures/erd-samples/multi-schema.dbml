@@ -1,0 +1,16 @@
+Table organisations {
+  id uuid [pk]
+  parent_id uuid [note: 'self-ref for company hierarchy']
+  name varchar(128) [not null]
+}
+
+Table people {
+  id uuid [pk]
+  manager_id uuid [note: 'self-ref reporting line']
+  organisation_id uuid [not null]
+  name varchar(128) [not null]
+}
+
+Ref: organisations.parent_id > organisations.id
+Ref: people.manager_id > people.id
+Ref: people.organisation_id > organisations.id

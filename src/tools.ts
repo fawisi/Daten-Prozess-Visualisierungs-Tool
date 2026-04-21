@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { DiagramStore } from './store.js';
 import { SafeIdentifier, ColumnType, RelationType } from './schema.js';
 import { toMermaid } from './export/mermaid.js';
+import { diagramToDbml } from './dbml-store.js';
+import { exporter } from '@dbml/core';
 import type { Diagram, Column } from './schema.js';
+import type { ErdStore } from './erd-store-interface.js';
 
 function schemaSummary(d: Diagram): string {
   const t = Object.keys(d.tables).length;
@@ -15,7 +17,7 @@ function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] };
 }
 
-export function registerTools(server: McpServer, store: DiagramStore) {
+export function registerTools(server: McpServer, store: ErdStore) {
   // --- diagram_create_table ---
   server.registerTool(
     'diagram_create_table',
@@ -292,6 +294,36 @@ export function registerTools(server: McpServer, store: DiagramStore) {
         return textResult('Schema is empty. Create tables first.');
       }
       return textResult(toMermaid(diagram));
+    }
+  );
+
+  // --- diagram_export_sql ---
+  server.registerTool(
+    'diagram_export_sql',
+    {
+      description:
+        'Export the current ER diagram as SQL DDL for postgres or mysql (mssql/oracle/snowflake ship in v1.1)',
+      inputSchema: z.object({
+        dialect: z.enum(['postgres', 'mysql']).describe('SQL dialect'),
+      }),
+      annotations: {
+        readOnlyHint: true,
+      },
+    },
+    async ({ dialect }) => {
+      const diagram = await store.load();
+      if (Object.keys(diagram.tables).length === 0) {
+        return textResult('Schema is empty. Create tables first.');
+      }
+      const dbml = diagramToDbml(diagram);
+      try {
+        const sql = exporter.export(dbml, dialect);
+        return textResult(sql);
+      } catch (err) {
+        return textResult(
+          `SQL export failed for dialect ${dialect}: ${(err as Error).message}`
+        );
+      }
     }
   );
 }

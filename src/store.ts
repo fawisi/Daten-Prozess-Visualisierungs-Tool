@@ -3,8 +3,15 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { DiagramSchema, emptyDiagram } from './schema.js';
 import type { Diagram } from './schema.js';
+import type { ErdStore } from './erd-store-interface.js';
 
-export class DiagramStore {
+/**
+ * Legacy JSON-backed store for `.erd.json` files in the `viso-erd-v1`
+ * format. The canonical ERD store in v1.0 is `DbmlStore`; this class is
+ * kept for the `viso-mcp migrate` code path and for tests that do not need
+ * the full DBML round-trip.
+ */
+export class DiagramStore implements ErdStore {
   constructor(private filePath: string) {}
 
   async load(): Promise<Diagram> {
