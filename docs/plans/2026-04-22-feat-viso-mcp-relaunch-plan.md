@@ -83,8 +83,9 @@ Phase ist einzeln shippable und bricht die bestehende Funktionalitaet nicht.
 - **Phase 6 (2 Tage)**: Polish (Dark Mode, A11y, Touch-Support, Auto-Layout-
   Button)
 
-**Gesamtaufwand:** 12-15 Arbeitstage fuer einen Einzelnen, 7-9 Tage bei
-zwei Parallelstraengen (UI + Infrastruktur).
+**Gesamtaufwand:** 12-15 Arbeitstage best-case, realistisch 14-18 Tage fuer
+einen Einzelnen (Phase 4 ist der bekannte Slip-Kandidat). Bei zwei Parallel-
+straengen (UI + Infrastruktur): 7-9 Tage best-case, 9-11 Tage realistisch.
 
 ## Technical Approach
 
@@ -193,6 +194,13 @@ Koordinaten-Konflikte bei Parallel-Edits).
 
 **Tasks:**
 
+- [ ] **PRE-TASK (blockierend):** `npm view viso-mcp` ausfuehren.
+  - Wenn 404 (frei): Sofort claimen via Placeholder-Publish (`package.json` mit
+    `name: "viso-mcp"`, `version: "0.0.1"`, leerer `index.js` mit `// reserved`,
+    `npm publish --access public`). Erst danach mit Phase 0 fortfahren.
+  - Wenn belegt: Abort. Plan-weit Rename auf scoped `@tafka/viso-mcp`
+    durchfuehren (CLI-Befehle bleiben `viso-mcp init/serve/migrate`,
+    nur Package-Name ist scoped). Danach Risk #3 als resolved markieren.
 - [ ] `git mv` Repo-Verzeichnis `Daten_Prozess_Visualisierungs_Tool/` →
       `viso-mcp/`
 - [ ] `package.json:1` — `name: "daten-viz-mcp"` → `"viso-mcp"`, `version:
@@ -200,11 +208,13 @@ Koordinaten-Konflikte bei Parallel-Edits).
 - [ ] `tsup.config.ts:5` — `format: ['cjs']` → `format: ['cjs', 'esm']`
 - [ ] Rebrand-Sweep in allen Files:
   - `DATEN_VIZ_FILE` → `VISO_FILE` (keep old as deprecated alias in `src/server.ts:14-20`)
-  - `daten-viz-bpmn-v1` → `viso-bpmn-v1` in `src/bpmn/schema.ts:39-44`
-  - `daten-viz-erd-v1` → `viso-erd-v1` in `src/schema.ts:57-62` (alter Read-
-    Support fuer Migration, siehe Phase 1)
-  - `/__daten-viz-api` → `/__viso-api` in `src/preview/vite-plugin.ts:37`
-  - `/__daten-viz-ws` → `/__viso-ws` in `src/preview/vite-plugin.ts:?`
+  - `daten-viz-bpmn-v1` → `viso-bpmn-v1` in `src/bpmn/schema.ts:40` (Zod-
+    literal) und `:62` (Default-Schema)
+  - `daten-viz-erd-v1` → `viso-erd-v1` in `src/schema.ts:58` (Zod-literal) und
+    `:80` (Default-Schema). Alter Read-Support fuer Migration, siehe Phase 1.
+  - `/__daten-viz-api` → `/__viso-api` in `src/preview/vite-plugin.ts:73, :81,
+    :91, :99, :109` (alle REST-Endpoints)
+  - `/__daten-viz-ws` → `/__viso-ws` in `src/preview/vite-plugin.ts:44`
   - `plugin name` + alle Kommentare
 - [ ] `CLAUDE.md:1` Projekt-Name anpassen
 - [ ] `README.md` rewriten (gibt es noch nicht, neu erstellen)
@@ -266,9 +276,11 @@ ersetzt.
   - `src/migrate-cli.test.ts` — 5+ Tests mit Reference-Schemas in `fixtures/`
   - 5 Reference-ERDs in `fixtures/erd-samples/`: simple, composite-keys,
     enums, multi-schema, TableGroups
-- [ ] Neue MCP-Tool: `diagram_export_sql` (bereits moeglich via @dbml/core.Exporter):
-  - Args: `dialect: 'postgres'|'mysql'|'mssql'|'oracle'|'snowflake'`
+- [ ] Neue MCP-Tool: `diagram_export_sql` (via @dbml/core.Exporter):
+  - Args: `dialect: 'postgres'|'mysql'` (v1.0 MVP-Scope)
   - Returns: SQL DDL Text
+  - mssql/oracle/snowflake deferred to v1.1 (siehe Future Considerations) —
+    @dbml/core unterstuetzt sie, aber Roundtrip-Test-Surface zu gross fuer v1.0
 
 **Resolved Design Decisions:**
 - Migration-Strategie: **Explizite Pfade** (kein Auto-Recursive). `viso-mcp
@@ -286,7 +298,8 @@ ersetzt.
 - `npx viso-mcp migrate test-schema.erd.json` → erzeugt `test-schema.dbml`
   + `.bak`
 - MCP-Tool `diagram_create_table` nach Migration funktioniert identisch
-- `diagram_export_sql --dialect postgres` erzeugt gueltiges PostgreSQL DDL
+- `diagram_export_sql --dialect postgres` und `--dialect mysql` erzeugen
+  gueltiges DDL (je 1 Roundtrip-Test pro Dialect)
 - 5 Reference-Schemas roundtrippen 1:1 (export → import → export = identisch)
 - Keine Verlust von Positionen nach Migration
 
@@ -437,8 +450,8 @@ mockup-hybrid-final.png`.
   - End-Event (keyboard `2`)
   - Task (keyboard `3`)
   - Gateway (keyboard `4`)
-- [ ] Active-Tool-State im `useToolStore` (zustand oder context, konsistent mit
-      existing patterns)
+- [ ] Active-Tool-State im `useToolStore` via React Context (kein zustand
+      installiert, Context reicht fuer single-screen-state)
 - [ ] Click-to-Place: Tool aktiv → Click auf Canvas → Node an Position
 
 **Rechte Sidebar — Properties Panel (`src/preview/components/shell/PropertiesPanel.tsx`, NEW; ersetzt Stub in `AppSidebar.tsx:100-124`):**
@@ -461,7 +474,8 @@ mockup-hybrid-final.png`.
 
 - [ ] Toggelbar via Cmd+/ oder Header-Button, default collapsed
 - [ ] Hoehe 200-400px (resizable)
-- [ ] `@uiw/react-codemirror` oder `monaco-editor-react` mit Syntax-Highlighting
+- [ ] `@uiw/react-codemirror` mit Syntax-Highlighting (kleinerer Bundle als
+      Monaco, ausreichend fuer JSON+DBML)
 - [ ] Zeigt BPMN-JSON oder DBML-Text abhaengig von aktivem Tab
 - [ ] Live-Sync mit Canvas: Text-Edit → debounce 300ms → `set_bpmn`/`set_dbml`
       → Canvas re-renders
@@ -497,7 +511,9 @@ mockup-hybrid-final.png`.
 - Properties-Panel zeigt korrekte Felder fuer jeden Node-Typ
 - Auto-Layout-Button bringt Diagramm zu stabilem ELK-Layout
 
-**Estimated effort:** 3-4 Tage (UI + Interaktions-Feinschliff)
+**Estimated effort:** 3-4 Tage best-case, realistisch 5-7 Tage. Phase 4 ist
+mit 7 neuen Komponenten + Undo/Redo + CodeMirror-Live-Sync der groesste Block;
+Slip wird bewusst akzeptiert statt gesplittet.
 
 ---
 
@@ -621,7 +637,8 @@ aufrufen.
       Tab navigiert zwischen Nodes, Enter oeffnet Properties, Delete loescht
 - [ ] Focus-Indicator: 2px solid primary color, sichtbar auf allen
       interaktiven Elementen
-- [ ] Screen-Reader-Test mit VoiceOver (macOS) + NVDA (Windows, wenn moeglich)
+- [ ] Screen-Reader-Test mit VoiceOver (macOS, MVP-Pflicht). NVDA (Windows)
+      best-effort, kein Release-Blocker
 - [ ] Color-Contrast-Check: Tailwind-Farben gegen WCAG-AA (4.5:1 normal, 3:1
       grosse Fonts)
 
@@ -631,8 +648,8 @@ aufrufen.
   - Pinch-Zoom-Sensitivity anpassen
   - Touch-Drag-Handles groesser (44x44 Mindestgroesse WCAG)
   - Tap-to-Select (100ms delay verhindert)
-- [ ] Bei Bedarf: `@use-gesture/react` fuer custom touch handlers
-- [ ] iPad-Testing: Safari iOS + Chrome iOS
+- [ ] iPad-Testing: Safari iOS + Chrome iOS. Falls native React-Flow-Touch nicht
+      ausreicht: `@use-gesture/react` evaluieren (post-MVP, nicht im v1.0-Scope)
 
 **Auto-Layout-Button:**
 
@@ -756,8 +773,8 @@ are fixed before implementation:
 - [ ] `set_dbml` Tool parst DBML, validiert, und erstellt neues Schema
 - [ ] `set_bpmn` Tool parst BPMN-JSON, validiert, und erstellt neues Schema
 - [ ] Malformed `set_*`-Inputs retournieren RFC-7807-Problem-JSON
-- [ ] `diagram_export_sql --dialect postgres|mysql|mssql|oracle|snowflake`
-      funktioniert
+- [ ] `diagram_export_sql --dialect postgres|mysql` funktioniert
+      (mssql/oracle/snowflake → v1.1)
 - [ ] Hybrid-UX-Editor zeigt Canvas mit Tools-Sidebar links + Properties-Panel
       rechts + toggelbarem Code-Panel unten
 - [ ] Cmd+K oeffnet Command-Palette mit 8+ Actions
@@ -830,7 +847,6 @@ are fixed before implementation:
 - `@codemirror/lang-json@^6.x` — JSON syntax highlighting
 - `cmdk@^1.x` — Command palette (Linear-style)
 - `execa@^9.x` — CLI testing (devDependency)
-- `@use-gesture/react@^10.x` — Optional, touch gestures (Phase 6)
 
 ### Bestehende Dependencies (bleiben unveraendert)
 
@@ -856,14 +872,13 @@ are fixed before implementation:
 |---|---|---|---|---|
 | 1 | `@dbml/core` API-Drift (Major-Release) | Mid | Mid | Version pin auf `^3.x`, eigener Parser-Adapter kapselt Lib, Roundtrip-Tests mit 5 Reference-Schemas |
 | 2 | `@xyflow/react` v13+ Breaking Changes | Low | High | Wrapper-Components fuer alle Editor-interaktionen, Upgrade nur synchron mit Hub, Changelog-Monitoring |
-| 3 | npm package name `viso-mcp` bereits belegt | Low | High | **Vor Phase 0 reservieren!** Wenn belegt: Fallback `@tafka/viso-mcp` scoped |
-| 4 | Agent-Prompt-Kompatibilitaet bei Tool-Rename | - | - | Wird umgangen durch "kein Tool-Rename" Entscheidung |
-| 5 | Hetzner-VPS-Ausfall blockiert Hub-PDF-Export | Low | Mid | Gotenberg-Standard-Image, Wechsel zu Railway/Fly per ENV (<1h Downtime) — **siehe brainstorm Risiken #4** |
-| 6 | Mermaid-Styling-Inkonsistenzen | Mid | Low | `theme.ts` zentralisiert Styling, Fallback auf inline `style`-Direktiven, Regressions-Tests — **siehe brainstorm Risiken #5** |
-| 7 | DBML-Migration verliert Descriptions > 200 Zeichen | Mid | Low | Warn-Messages mit Liste, spaeter `.meta.json`-Sidecar in v1.1 falls Feedback |
-| 8 | Code-Panel Performance bei grossen DBML-Files | Mid | Low | Debounce 300ms, Virtualisierung via CodeMirror (eingebaut), nur-Diff-rendering in v1.1 |
-| 9 | Touch-Support fehleranfaellig auf Android | Mid | Low | iPad als Primaerziel, Android best-effort, keine MVP-Garantie |
-| 10 | Windows-CLI-Path-Bugs | Mid | Mid | Windows-CI-Job (GitHub Actions matrix), `path.posix` fuer args |
+| 3 | npm package name `viso-mcp` bereits belegt | Low | High | Phase 0 PRE-TASK prueft + claimt via Placeholder-Publish; Fallback `@tafka/viso-mcp` scoped wenn belegt |
+| 4 | Agent-Prompt-Kompatibilitaet bei Tool-Rename | n/a | n/a | Resolved: kein Tool-Rename in v1.0 (siehe MCP-Tool-Naming Decision) |
+| 5 | Mermaid-Styling-Inkonsistenzen | Mid | Low | `theme.ts` zentralisiert Styling, Fallback auf inline `style`-Direktiven, Regressions-Tests — **siehe brainstorm Risiken #5** |
+| 6 | DBML-Migration verliert Descriptions > 200 Zeichen | Mid | Low | Warn-Messages mit Liste, spaeter `.meta.json`-Sidecar in v1.1 falls Feedback |
+| 7 | Code-Panel Performance bei grossen DBML-Files | Mid | Low | Debounce 300ms, Virtualisierung via CodeMirror (eingebaut), nur-Diff-rendering in v1.1 |
+| 8 | Touch-Support fehleranfaellig auf Android | Mid | Low | iPad als Primaerziel, Android best-effort, keine MVP-Garantie |
+| 9 | Windows-CLI-Path-Bugs | Mid | Mid | Windows-CI-Job (GitHub Actions matrix), `path.posix` fuer args |
 
 ## Resource Requirements
 
@@ -885,6 +900,8 @@ are fixed before implementation:
 ### v1.1 (post-MVP, 2-3 Monate nach v1.0.0 Release)
 
 - **D2-Export** als "Pretty Export" (je nach Hub-Pitch-Feedback)
+- **SQL-Dialect-Erweiterung**: `mssql`, `oracle`, `snowflake` fuer
+  `diagram_export_sql` (postgres+mysql shipped in v1.0)
 - **Multi-Agent-Setup-Zweige**: Cursor, Cline, Windsurf, Zed in `init`-CLI
 - **`--recursive` Migration-Mode** fuer Bulk-Migrations
 - **`.meta.json`-Sidecar** fuer full-length Descriptions (ueber 200 Zeichen)
