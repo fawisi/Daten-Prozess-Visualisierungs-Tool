@@ -152,17 +152,21 @@ n8n):
   - Feld: TYPE (Dropdown)
   - Feld: FARBE (6 Farb-Swatches, custom auch moeglich)
   - Feld: KOMMENTAR (Textarea)
-  - Section: ATTACHMENTS
-    - `⏺ Screen-Recording starten` (Button, oeffnet MediaRecorder-API,
-      speichert in Supabase Storage per Hub-Kontext)
+  - Section: ATTACHMENTS (Slot fuer Hub-Integration)
+    - viso-mcp exportiert nur einen React-Prop `attachmentSlot`. Der Hub
+      liefert die konkrete Screen-Recording-/File-Upload-Implementation
+      (MediaRecorder-API + Supabase Storage). Spec im Hub-Repo:
+      `TAFKA_KI_Transformationshub/docs/research/aktiv/2026-04-18-screen-
+      recording-feasibility.md`.
 - **Code-Panel (Bottom, toggelbar via Cmd+/ oder "</> Code"-Button):** Split
   einblendbar, zeigt BPMN-JSON oder DBML-Text je nach aktivem Diagramm.
   Live-sync mit Canvas. Fuer Power-User und Agent-Workflow optimal.
 
-**Warum so?** Fabian-Feedback: "Canvas-first fuer Consultant-Zielgruppe,
-Code-Panel nicht dauerhaft sichtbar. Linke Leiste fuer Tools + Shapes. Rechts
-Label/Type/Farbe/Kommentar-Felder plus optional Screen-Recording-Upload.
-Auto-Layout aus Miro/Figma-Lite uebernommen."
+**Warum so?** Canvas-first eignet sich fuer die Consultant-Zielgruppe (nicht-
+techisch). Das Code-Panel ist fuer Power-User und Agent-Workflows verfuegbar,
+aber nicht als Default im Weg. Tools + Shapes in linker Sidebar trennen
+Werkzeug-Auswahl vom Properties-Editing rechts. Auto-Layout-Button ist aus
+Miro/Figma-Lite uebernommen und beschleunigt das Ordnen nach Bulk-Aenderungen.
 
 **Touch-optimiert:** Canvas unterstuetzt Pinch-Zoom und Touch-Drag (wichtig fuer
 TAFKA-Workshops mit iPad).
@@ -172,7 +176,7 @@ TAFKA-Workshops mit iPad).
 
 ---
 
-## Agent-Auto-Modeling (Killer-Feature)
+## Agent-Auto-Modeling
 
 **Input:** Freitext-Prompt. Der Agent (Claude Code, Cursor) bekommt eine
 Prozess- oder Schema-Beschreibung in natuerlicher Sprache (z.B. "Kunde
@@ -184,8 +188,9 @@ Editor zeigt den Entwurf sofort im Canvas, User reviewt, editiert oder akzeptier
 Sicher, besonders im TAFKA-Kontext, wo der Consultant Qualitaet garantiert.
 
 **Technische Umsetzung (Hybrid-Pfad):**
-1. Agent macht initial einen **grossen Wurf** via `set_bpmn(json)` oder
-   `set_dbml(text)` - komplettes Diagramm in einem Call. Schnell, "ploppt rein".
+1. Agent macht initial einen **Bulk-Set** via `set_bpmn(json)` oder
+   `set_dbml(text)` - komplettes Diagramm in einem Call. Schnell, User sieht
+   den Entwurf sofort.
 2. Agent macht **spaetere Korrekturen** via atomare Tool-Calls
    (`process_add_node`, `diagram_add_column`). Praezise, diff-freundlich,
    weniger Token-Kosten.
@@ -209,8 +214,8 @@ Der TAFKA KI-Hub ist bereits auf folgendem Stack festgelegt (`legacy/portal-
 prototype-2026-04/src/lib/db/schema.ts`):
 - **Postgres via Supabase EU Frankfurt** + **Drizzle ORM 0.45.2**
 - **Next.js 16.2.2 App Router**
-- **@xyflow/react 12.10.2** (identische Version wie unser Tool - perfekte
-  Kompatibilitaet!)
+- **@xyflow/react 12.10.2** (identische Version wie unser Tool - direkt
+  kompatibel)
 - **@react-pdf/renderer 4.4.0** im Prototyp (wird fuer viso-Integration durch
   Gotenberg ersetzt)
 - **Auth:** Supabase Auth (Magic Links)
@@ -369,12 +374,26 @@ Vier Bausteine fuer den ersten Release:
    - `.mcp.json` schreiben/erweitern
    - Dry-run, interaktiver Fallback
 
-3. **Theme-Modul + Polished Hybrid-UX**
-   - `src/theme.ts` (themeVariables + classDef)
-   - Hybrid-UX-Editor: Canvas-first, Tools-Sidebar links, Properties rechts,
-     Code-Panel Cmd+/ toggelbar
-   - Dark Mode, A11y-Grundlagen, Touch-Support (Pinch-Zoom, Touch-Drag)
-   - Auto-Layout-Button (ELK)
+3. **Hybrid-UX-Editor + Polish-Layer** (explizit aufgeschluesselt)
+   - **Theme-Modul** `src/theme.ts` mit `themeVariables` + `classDef`-
+     Fragmenten fuer konsistentes Mermaid-Rendering
+   - **Editor-Chrome:**
+     - Top-Header: Logo, Dateiname, `</> Code`-Toggle, `↓ Export`-Button,
+       Auto-Layout-Button (ELK one-click)
+     - Linke Sidebar (68px): Tool-Palette (Pointer default-aktiv, Pan,
+       Separator, Start-Event, End-Event, Task, Gateway - als Icons)
+     - Rechte Sidebar (300px, einblendbar bei Selection): Properties-Panel
+       mit LABEL, TYPE, FARBE (6 Swatches), KOMMENTAR, `attachmentSlot`
+       (Slot-Prop fuer Hub-Implementation)
+     - Bottom Code-Panel: toggelbar via Cmd+/ oder Header-Button, zeigt
+       BPMN-JSON oder DBML-Text, Live-Sync mit Canvas
+   - **Core-Interaktionen:** Undo/Redo (Cmd+Z), Auto-Save mit File-Watcher-
+     Sync, Command-Palette (Cmd+K) mit Actions "Add Task", "Export as SVG"
+   - **Polish:** Dark-Mode-Toggle, A11y-Grundlagen (Tab-Order, ARIA-Labels
+     fuer Canvas-Nodes, Keyboard-Navigation)
+   - **Touch-Support:** Pinch-Zoom + Touch-Drag fuer iPad-Workshops
+     (React-Flow unterstuetzt Touch nativ; bei Bedarf @use-gesture/react
+     als Erweiterung)
 
 4. **Hub-ready: React Components + HTTP-API + Agent-Auto-Modeling**
    - ESM-Export des Editor-Bundles
@@ -389,6 +408,8 @@ Vier Bausteine fuer den ersten Release:
 - BPMN 2.0 XML Import/Export
 - Pool/Lane-Darstellung im BPMN-Editor
 - Prisma/Drizzle-First-Class-Exports
+- Screen-Recording-Implementation (Hub-Thema, viso-mcp exportiert nur
+  `attachmentSlot`-Prop)
 - Gotenberg-Integration (Hub-Thema, separates Plan)
 - Admin-Report-Editor (Hub-Thema, separates Plan)
 - Skill-Markdown (post-MVP Community-Release)
@@ -407,7 +428,7 @@ Vier Bausteine fuer den ersten Release:
 | DSGVO/BFSG/AI-Act | Hetzner EU + Supabase EU + Audit-Log |
 | Multi-User (Consultant+Kunde) | Hub-Layer baut darueber, viso bleibt Singleplayer |
 | iPad-Workshops | Touch-optimierter Canvas im Editor |
-| Screen-Recording-Upload | Attachment-Button im Editor → Supabase Storage |
+| Screen-Recording-Upload | viso-mcp exportiert React-Prop `attachmentSlot`; Hub implementiert via MediaRecorder-API + Supabase Storage |
 
 ---
 
@@ -421,6 +442,35 @@ Zwei Detail-Fragen bleiben bewusst offen fuer die Planning-Phase:
 
 2. **Skill-Markdown (SKILL.md)** fuer Community-Veroeffentlichung: eigener
    Release nach MVP-Stabilisierung. Nicht MVP.
+
+---
+
+## Risiken
+
+Fuer die Planning-Phase zu adressieren:
+
+1. **`@dbml/core` API-Stabilitaet:** Externes NPM-Package, Version-Drift
+   moeglich. Mitigation: Version pinnen, Parser-Output in eigenem Adapter
+   kapseln, Regressions-Tests mit Standard-Schemas (3-5 typische ERDs).
+
+2. **React-Flow / @xyflow/react Major-Upgrades:** v12 wird vom Hub genutzt,
+   aber Breaking Changes bei v13+ moeglich (bekannt fuer v10→v11→v12). 
+   Mitigation: eigene Wrapper-Components, Upgrade nur synchron mit Hub,
+   Changelog-Monitoring.
+
+3. **Gotenberg-Security-Updates (Hub-seitig):** Chromium-Container mit
+   Sandbox-Escape-CVE-Historie (CVE-2025-34267). Mitigation: Docker-Image
+   mit Watchtower fuer Auto-Updates, `--no-sandbox` nur im isolierten
+   Container, Netzwerk-Isolation zur Hub-API.
+
+4. **Hetzner-VPS-Ausfall:** Single-Point-of-Failure fuer PDF-Export.
+   Mitigation: Gotenberg ist Standard-Docker-Image, Wechsel zu Railway/Fly
+   per ENV-Variable (<1h Downtime). Backup-Plan im Runbook dokumentiert.
+
+5. **Mermaid-Rendering-Inkonsistenzen:** Mermaid-v11-Styling-API hat
+   bekannte Bugs (Issue #2673: `classDef` auf Entities unzuverlaessig).
+   Mitigation: `theme.ts` isoliert das Styling, Fallback auf inline
+   `style`-Direktiven, Regressions-Tests fuer Standard-Diagramme.
 
 ---
 
