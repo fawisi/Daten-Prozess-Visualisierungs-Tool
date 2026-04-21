@@ -1,9 +1,12 @@
 ---
 date: 2026-04-21
+updated: 2026-04-22
 topic: viso-mcp-agent-native-diagram-editor
+version: v2 (Vertiefungsrunde 2026-04-22)
 status: Brainstorm abgeschlossen, bereit fuer /workflows:plan
 autor: Fabian Willi Simon (+ Claude)
 basiert_auf: bestehendes Tool daten-viz-mcp (v0.2.0), Konzept TAFKA KI-Hub v4
+mockups: docs/designs/editor-ux-mockups-all5.png, editor-ux-mockup-hybrid-final.png
 ---
 
 # viso-mcp - Agent-natives Diagramm-Studio
@@ -11,11 +14,16 @@ basiert_auf: bestehendes Tool daten-viz-mcp (v0.2.0), Konzept TAFKA KI-Hub v4
 ## TL;DR
 
 Wir relaunchen das bestehende `daten-viz-mcp` als **`viso-mcp`**: ein agent-
-agnostisches npm-Paket mit Browser-Editor fuer BPMN-Prozesse und ER-Datenmodelle,
-das ueber MCP von **allen** Coding-Agents (Claude Code, Cursor, Cline, Windsurf,
-Zed) genutzt werden kann. Der TAFKA KI-Hub bindet denselben Code als Next.js-
-Komponente ein. Primaeres Austauschformat fuer LLMs: **Mermaid** (Kontext) +
-**DBML** (ERD-Source-of-Truth) + **Custom JSON** (BPMN-Source-of-Truth).
+agnostisches npm-Paket mit leichtgewichtigem Browser-Editor fuer BPMN-Prozesse
+und ER-Datenmodelle, das ueber MCP von **allen** Coding-Agents (Claude Code,
+Cursor, Cline, Windsurf, Zed) genutzt werden kann. Der TAFKA KI-Hub bindet
+denselben Code als Next.js-Komponente ein, der Kunden-Report rendert als HTML
+und wird via **Gotenberg** (Docker-Microservice, Hetzner EU) zu PDF exportiert.
+
+**Primaere Formate:** Custom JSON (BPMN-Source-of-Truth) + **DBML**
+(ERD-Source-of-Truth) + **Mermaid** (Export-Layer fuer LLM-Kontext). **Editor-UX:**
+Canvas-first Hybrid - Tools links, Properties rechts, Code-Panel per Cmd+/
+einblendbar, Auto-Layout-Button, Screen-Recording-Attachment.
 
 ---
 
@@ -25,24 +33,26 @@ Ein **leichtgewichtiger Browser-Editor**, der
 
 1. BPMN-Prozesse visuell editierbar macht (React Flow + ELK-Auto-Layout),
 2. ER-Datenmodelle visuell editierbar macht,
-3. alle Diagramme als **Mermaid-Code oder DBML-Code** exportiert, damit sie
-   sich direkt als Kontext in jeden LLM-Prompt einfuegen lassen,
+3. alle Diagramme als **Mermaid-Code, DBML oder SQL DDL** exportiert, damit
+   sie sich direkt als Kontext in jeden LLM-Prompt einfuegen lassen,
 4. via **MCP-Server** von Coding-Agents gelesen UND editiert werden kann
-   (atomare Tool-Calls, nicht Full-Document-Rewrites),
+   (atomare Tool-Calls + hybrider `set_*`-Initial-Draft),
 5. via **HTTP-API-Wrapper** in den TAFKA KI-Hub (Next.js) eingebunden wird,
-6. per **`npx viso-mcp init`** in einem Befehl die MCP-Config fuer jeden
-   unterstuetzten Agent schreibt.
+6. per **`npx viso-mcp init`** in einem Befehl die MCP-Config fuer Claude
+   Code schreibt (weitere Agents nach Community-Feedback),
+7. Singleplayer-Tool bleibt (Multi-User-Logik lebt auf Hub-Ebene, nicht im
+   Core-Paket).
 
 Das Tool ersetzt nichts Bestehendes radikal - es ist der konsequente naechste
 Schritt fuer `daten-viz-mcp` v0.2.0: **Rebrand + DBML-Migration + Auto-Setup-CLI
-+ Hub-Ready Packaging**.
++ Hub-Ready Packaging + polished Hybrid-UX**.
 
 ---
 
 ## Warum dieser Weg (nach Research)
 
 Drei parallele Research-Agents (BPMN-Formate, ERD-Formate, LLM-Roundtrip-
-Qualitaet) kamen zum gleichen Bild:
+Qualitaet) plus vier parallele Agents zur PDF-Toolchain kamen zum gleichen Bild:
 
 **BPMN 2.0 XML ist LLM-feindlich** (arXiv 2509.24592, BPMN Assistant 2025):
 direkte XML-Generierung ist 4x teurer in Tokens und erreicht bei Open-Weights-
@@ -54,20 +64,27 @@ BPMN-Source-of-Truth ist die richtige Entscheidung und bleibt.
 enums, TableGroups, Referential Actions, multi-schema ab. Hat mit `@dbml/core`
 eine robuste npm-Parser-Library. ER Flow's MCP nutzt DBML bereits als Surface
 (erflow.io/en/blog/claude-mcp-database-architect). Mermaid erDiagram ist nur
-fuer Exports/Views geeignet, nicht als Source - fehlen composite-FKs, Indexes,
-Enums; styling-API ist unzuverlaessig (GitHub Issue mermaid-js/mermaid#2673).
+fuer Exports/Views geeignet (fehlen composite-FKs, Indexes, Enums; styling-API
+unzuverlaessig, Issue mermaid-js/mermaid#2673).
 
 **Mermaid ist das LLM-Lingua-Franca fuer Exports**: token-aermstes Format
 (~150 Tokens/10 Nodes), native GitHub/Notion/VS Code Render, groesster
 LLM-Trainings-Fussabdruck. Die "Mermaid + externe CSS-Datei"-Idee ist **kein
 echtes Pattern** (Shadow-DOM-Rendering blockiert CSS-Kaskade). Stattdessen:
-ein geteiltes `theme.ts` Modul, das `themeVariables` + `classDef` pro Export
+ein geteiltes `theme.ts` Modul, das `themeVariables` + `classDef`-Fragmente
 konsistent injiziert.
 
-**D2 als "Pretty Export" vertagt**: hat besseres Styling (echte Klassen, Themes,
+**D2 als "Pretty Export" vertagt**: besseres Styling (echte Klassen, Themes,
 SVG-Icons) und stabileres Layout (ELK), aber kein GitHub-Render und kleinere
-LLM-Community. Fuer Kunden-Pitch-Decks/Audit-PDFs eine spaetere Erweiterung
-wert, aber nicht MVP.
+LLM-Community. Fuer spaetere Iteration reservieren, nicht MVP.
+
+**PDF via HTML-Render (Gotenberg)**: da der TAFKA KI-Hub den Audit-Report als
+**interaktive HTML-Seite** darstellt (report.html mit Live-ROI-Widgets, Adoption-
+Slider, Wirkungsfelder A+B), ist HTML-zu-PDF der natuerlichste Weg. PDFs sind
+mit kopierbarem Text und klickbaren Links; Widgets werden beim Export
+eingefroren. @react-pdf/renderer faellt raus wegen Memory-Leaks (Issue #718),
+SVG-CSS-Problemen und Next.js-16-App-Router-Inkompatibilitaet. Pandoc+Typst
+waere doppelpflegebasierte Parallel-Quelle - nicht sinnvoll.
 
 ---
 
@@ -78,208 +95,403 @@ wert, aber nicht MVP.
 │ Source:   custom JSON         │   │ Source:   DBML (.dbml Text)    │
 │ Layout:   .bpmn.pos.json      │   │ Layout:   .erd.pos.json        │
 │                               │   │                                │
-│ Exports:  Mermaid flowchart   │   │ Exports:  Mermaid erDiagram,   │
-│           (+ optional D2)     │   │           SQL DDL (Postgres,   │
-│                               │   │           MySQL, MSSQL, ...)   │
+│ Exports:  Mermaid flowchart,  │   │ Exports:  Mermaid erDiagram,   │
+│           SVG (fuer PDF)      │   │           SQL DDL (Postgres,   │
+│                               │   │           MySQL, MSSQL, ...),  │
+│                               │   │           SVG (fuer PDF)       │
 └───────────────────────────────┘   └────────────────────────────────┘
             ↓                                        ↓
 ┌───────────────────────────────────────────────────────────────────┐
-│ MCP-Server (stdio)         HTTP-API-Wrapper (fuer TAFKA KI-Hub)   │
-│ - process_add_node         - POST /api/workspace/:id/bpmn/node    │
-│ - process_add_flow         - POST /api/workspace/:id/erd/table    │
-│ - diagram_add_table        - GET  /api/workspace/:id/export/...   │
-│ - diagram_add_column                                              │
-│ - diagram_set_dbml         theme.ts (shared Mermaid styling)      │
-│ - ... (atomare Mutations)                                         │
+│ MCP-Server (stdio, Singleplayer, agent-agnostisch)                │
+│ ├─ atomare Mutations: process_add_node, diagram_add_table, ...    │
+│ └─ Hybrid-Mode: set_bpmn, set_dbml (fuer Initial-Drafts)          │
+│                                                                   │
+│ HTTP-API-Wrapper (fuer TAFKA KI-Hub)                              │
+│ ├─ POST /api/workspace/:id/bpmn/node                              │
+│ ├─ POST /api/workspace/:id/erd/table                              │
+│ └─ GET  /api/workspace/:id/export/(mermaid|svg|sql|dbml)          │
+│                                                                   │
+│ theme.ts (shared Mermaid styling fuer konsistente Exports)        │
 └───────────────────────────────────────────────────────────────────┘
             ↓
 ┌───────────────────────────────────────────────────────────────────┐
-│ Browser-Editor (React 19 + @xyflow/react + ELK + shadcn/ui)       │
+│ Browser-Editor (React 19 + @xyflow/react 12 + ELK + shadcn/ui)    │
+│ Hybrid-UX: Canvas-first + Tools links + Properties rechts         │
+│ Cmd+/ toggelt DBML/JSON-Code-Panel ein                            │
 │ - Standalone:  `npx viso-mcp serve process.bpmn.json`             │
 │ - Embedded:    Next.js Client Component im TAFKA KI-Hub           │
 └───────────────────────────────────────────────────────────────────┘
+            ↓
+┌───────────────────────────────────────────────────────────────────┐
+│ Hub-only: PDF-Export (interaktives HTML → PDF)                    │
+│ Gotenberg Docker-Microservice in Hetzner EU (Frankfurt)           │
+│ POST /forms/chromium/convert/html  →  PDF-Buffer                  │
+│ Vercel-Next.js ruft via fetch(), speichert in Supabase Storage    │
+└───────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Editor-UX: Hybrid Final
+
+Siehe `docs/designs/editor-ux-mockup-hybrid-final.png`. Kombiniert die besten
+Elemente aus vier evaluierten Stilen (Excalidraw, dbdiagram.io, Miro/Figma-Lite,
+n8n):
+
+- **Top-Header:** Logo, Dateiname, Auto-Layout-Button (primaer, lila),
+  "</> Code" Toggle, "↓ Export" Button.
+- **Linke Sidebar (68px):** Tool-Palette mit Pointer (default active), Pan,
+  Separator, dann BPMN-/ERD-Shapes als echte Symbole (Start-Event = gruener
+  Kreis, End-Event = roter Kreis, Task = blauer Rect, Gateway = gelber Diamant).
+  Reine Icons-only, kein Text.
+- **Canvas (fill):** React-Flow-Canvas. Selektierter Node bekommt gestrichelten
+  lila Rahmen. ELK-Auto-Layout bei Knopfdruck oder nach Bulk-Mutation.
+- **Rechte Sidebar (300px, einblendbar bei Selection):**
+  - Header: Node-Typ + Name (`Task: Registrieren`)
+  - Feld: LABEL (Text-Input)
+  - Feld: TYPE (Dropdown)
+  - Feld: FARBE (6 Farb-Swatches, custom auch moeglich)
+  - Feld: KOMMENTAR (Textarea)
+  - Section: ATTACHMENTS
+    - `⏺ Screen-Recording starten` (Button, oeffnet MediaRecorder-API,
+      speichert in Supabase Storage per Hub-Kontext)
+- **Code-Panel (Bottom, toggelbar via Cmd+/ oder "</> Code"-Button):** Split
+  einblendbar, zeigt BPMN-JSON oder DBML-Text je nach aktivem Diagramm.
+  Live-sync mit Canvas. Fuer Power-User und Agent-Workflow optimal.
+
+**Warum so?** Fabian-Feedback: "Canvas-first fuer Consultant-Zielgruppe,
+Code-Panel nicht dauerhaft sichtbar. Linke Leiste fuer Tools + Shapes. Rechts
+Label/Type/Farbe/Kommentar-Felder plus optional Screen-Recording-Upload.
+Auto-Layout aus Miro/Figma-Lite uebernommen."
+
+**Touch-optimiert:** Canvas unterstuetzt Pinch-Zoom und Touch-Drag (wichtig fuer
+TAFKA-Workshops mit iPad).
+
+**MVP-Must-Haves:** Undo/Redo (Cmd+Z), Keyboard-Shortcuts + Command-Palette
+(Cmd+K), Auto-Save mit File-Watcher-Sync, Auto-Layout-Button (ELK One-Click).
+
+---
+
+## Agent-Auto-Modeling (Killer-Feature)
+
+**Input:** Freitext-Prompt. Der Agent (Claude Code, Cursor) bekommt eine
+Prozess- oder Schema-Beschreibung in natuerlicher Sprache (z.B. "Kunde
+registriert sich, bestaetigt E-Mail, kann dann Produkte kaufen") und baut
+daraus BPMN oder ERD.
+
+**Autonomie-Grad:** Agent schlaegt vor, User bestaetigt (Human-in-the-Loop).
+Editor zeigt den Entwurf sofort im Canvas, User reviewt, editiert oder akzeptiert.
+Sicher, besonders im TAFKA-Kontext, wo der Consultant Qualitaet garantiert.
+
+**Technische Umsetzung (Hybrid-Pfad):**
+1. Agent macht initial einen **grossen Wurf** via `set_bpmn(json)` oder
+   `set_dbml(text)` - komplettes Diagramm in einem Call. Schnell, "ploppt rein".
+2. Agent macht **spaetere Korrekturen** via atomare Tool-Calls
+   (`process_add_node`, `diagram_add_column`). Praezise, diff-freundlich,
+   weniger Token-Kosten.
+
+Rationale: Research (arXiv 2509.24592) zeigt, dass atomare Mutations bei grossen
+Diagrammen zuverlaessiger sind, aber der Initial-Draft als Bulk-Set
+Tokenkosten spart. Hybrid kombiniert beides.
+
+**Paralleles Edit ist moeglich:** Der MCP-Server schreibt Files, der Browser-
+Editor hat einen File-Watcher (chokidar, existiert bereits) und re-rendert live
+bei Dateiaenderung. Du kannst also gleichzeitig manuell editieren, waehrend der
+Agent baut - Last-Write-Wins-Semantik, im Singleplayer-Kontext kein Problem.
+
+---
+
+## Hub-Integration im Detail
+
+### Storage & Tech-Stack (Hub-seitig, recherchiert)
+
+Der TAFKA KI-Hub ist bereits auf folgendem Stack festgelegt (`legacy/portal-
+prototype-2026-04/src/lib/db/schema.ts`):
+- **Postgres via Supabase EU Frankfurt** + **Drizzle ORM 0.45.2**
+- **Next.js 16.2.2 App Router**
+- **@xyflow/react 12.10.2** (identische Version wie unser Tool - perfekte
+  Kompatibilitaet!)
+- **@react-pdf/renderer 4.4.0** im Prototyp (wird fuer viso-Integration durch
+  Gotenberg ersetzt)
+- **Auth:** Supabase Auth (Magic Links)
+- **File Storage:** Supabase Storage mit signierten URLs
+- **Row-Level Security:** `workspace_id = current_setting('app.workspace_id')`
+
+### Wie Diagramme persistiert werden
+
+Im Hub-Kontext liegen BPMN-JSON und DBML **als Text-Spalten in Postgres-Tabellen**
+(nicht als Files):
+- `process_diagrams.bpmn_json` (TEXT), `process_diagrams.positions` (JSONB)
+- `erd_diagrams.dbml` (TEXT), `erd_diagrams.positions` (JSONB)
+- Beide haben `workspace_id` FK mit RLS
+
+Der HTTP-API-Wrapper im viso-mcp konvertiert zwischen File-based (Singleplayer
+`npx viso-mcp serve`) und DB-persistence (Hub). Dieselben MCP-Tools, anderer
+Storage-Adapter.
+
+### Rollen & Permissions (Hub-seitig)
+
+**Beide voll editierberechtigt (Consultant + Kunde)** mit **Audit-Log**:
+- Jede Mutation speichert `changed_by`, `changed_at`, `diff_json` in
+  `diagram_audit_log`
+- UI zeigt: "Nils hat 21.04. 14:32 den Task 'Registrieren' hinzugefuegt"
+- DSGVO/AI-Act-konform durch vollstaendige Nachvollziehbarkeit
+- Spaeter als Feature: "Rollback auf Version X" moeglich
+
+**Wichtige Praezisierung:** `viso-mcp` als npm-Paket ist **Singleplayer**.
+Multiplayer-Logik (Consultant + Kunde gleichzeitig) lebt auf Hub-Ebene, nicht
+im Tool-Core. Der Hub kann spaeter z.B. Y.js oder Workspace-Locks einbauen,
+ohne dass viso-mcp davon etwas weiss.
+
+### Agent-Identitaet im Hub
+
+Agent attribuiert als **Consultant** (nicht als Kunde). Rationale: TAFKA ist
+Quality-Owner, Agent arbeitet "im Auftrag des Consultants". Audit-Log-Eintrag:
+`changed_by: "Agent (as Nils Muehlenfeld)"`.
+
+---
+
+## PDF-Toolchain (Hub-only)
+
+### Entscheidung: Gotenberg Microservice in Hetzner VPS Frankfurt
+
+Nach 4 parallelen Deep-Research-Agents zu @react-pdf/renderer, Puppeteer/Gotenberg,
+Typst und Pandoc+Typst:
+
+**Gewinner: Gotenberg** (Docker-Container mit headless Chromium) als separater
+Microservice auf einem Hetzner VPS CX11 (~5€/Monat, Frankfurt).
+
+**Pipeline:**
+```
+Next.js App (Vercel)
+   ├─ rendert interaktives HTML (react-pdf-report.tsx mit ROI-Widgets)
+   ├─ fetch('https://viso-pdf.tafka.de/forms/chromium/convert/html', {
+   │      method: 'POST',
+   │      body: FormData mit index.html, fonts, TAFKA-CSS
+   │   })
+   └─ bekommt PDF-Buffer zurueck, speichert in Supabase Storage
+```
+
+**Warum:**
+1. **Hub-Primaer-Output ist bereits HTML** (report.html mit Live-ROI-Widgets).
+   HTML→PDF ist die natuerliche Weiterfuehrung, keine doppelte Quelle.
+2. **Agent schreibt HTML/Tailwind exzellent** (Fabian-Feedback bestaetigt).
+3. **Text bleibt kopierbar**, Links funktionieren, Cmd+F-Suche geht (kein
+   Raster-Bild).
+4. **BPMN/Mermaid rendern perfekt** (native Browser-Render, 100% Fidelity).
+5. **Deploy-Host austauschbar:** Gotenberg ist Standard-Docker-Image. Wechsel
+   von Hetzner zu Railway/Fly/Cloud Run ist eine ENV-Variable. Kein Lock-in.
+
+**DSGVO-konform:** Hetzner ist deutscher Anbieter, TAFKA ist alleiniger Data
+Controller, PDFs werden in EU gerendert und in EU-Supabase-Storage gespeichert.
+
+---
+
+## Admin-Report-Editor (Hub-Delta, neue User-Story)
+
+Recherche im TAFKA KI-Hub zeigt: der **Admin-Bereich fuer Report-Editing ist
+noch nicht spezifiziert**. Der Consultant braucht eine UI, um aus
+Audit-Fragebogen + Prozesstabelle + BPMN-/ERD-Diagrammen den 20-30-seitigen
+Report zu befuellen. Aktueller Stand:
+- `reports` Tabelle existiert (`markdownContent`, `version`, `cachedPdf`)
+- `report.html` Clickdummy existiert (Kundenansicht mit Live-ROI-Widgets)
+- **Admin-Editor-UI fehlt**. Versionierung/Freigabe-Workflow fehlt.
+
+### Neue User-Story (geht ins Hub-Brainstorm)
+
+> **Als Consultant** will ich im Admin-Bereich einen Audit-Report editieren,
+> mit:
+> - Strukturierten Template-Feldern (Wirkungsfeld A, Wirkungsfeld B, Prozesse,
+>   Fail-Lessons, ROI-Parameter)
+> - Optional: Agent-vorbefuellten Inhalten pro Section (aus Audit-Daten +
+>   Diagrammen)
+> - Live-Preview der Kundenansicht (report.html mit aktuellen Werten)
+> - Diagramm-Einbindung aus viso-mcp (Auto-Sync, SVG-Render)
+> - Versions-Tracking (`draft` → `in_review` → `approved` → `final`)
+> - PDF-Export-Trigger nach Approval (via Gotenberg-Microservice)
+> - Audit-Log (wer hat was wann geaendert - DSGVO/AI-Act)
+
+**Impact auf viso-mcp:** Der Admin-Report-Editor importiert die
+viso-mcp-React-Components und ruft HTTP-API-Endpoints fuer Diagramm-Export
+(SVG, Mermaid, Code). `viso-mcp` muss keine Report-Logik kennen - der Hub
+baut den Report-Editor darum herum.
+
+**Dieses Brainstorm dokumentiert die Abhaengigkeit**; die konkrete Spec der
+Admin-UI entsteht im Hub-Repo als separates Brainstorm/Plan.
 
 ---
 
 ## Key Decisions
 
 - **Packaging:** Standalone npm-Paket `viso-mcp`, agent-agnostisch ueber MCP.
-  Rationale: Fabians Prioritaet "Am liebsten etwas das mit jedem Coding Agent
-  geht." MCP ist der einzige offene Standard, den Claude Code, Cursor, Cline,
-  Windsurf, Zed alle sprechen.
-
-- **Distribution:** npm-Paket + Auto-Setup-CLI (`npx viso-mcp init`).
-  MVP-Coverage: **Claude Code (.mcp.json)**. Cursor/Cline/Windsurf folgen in
-  spaeteren Releases. Rationale: Fabians Primaer-Agent, spaeter Community-Pull.
-
-- **BPMN-Format:** Custom JSON bleibt (`viso-bpmn-v1`, Fortsetzung des
-  bestehenden `daten-viz-bpmn-v1` Schemas). Rationale: Forschung zeigt
-  eindeutig, dass BPMN 2.0 XML fuer LLM-Edits ungeeignet ist; Mermaid kann
-  kein echtes BPMN (keine Gateway-Semantik, keine Pools/Lanes).
-
-- **ERD-Format:** Wechsel von Custom JSON zu **DBML** als Source-of-Truth,
-  Custom JSON wird zum `.erd.pos.json` Sidecar (nur Koordinaten + UI-State).
-  Integration via `@dbml/core` npm package (Parse/Generate DBML <-> SQL DDL
-  fuer Postgres/MySQL/MSSQL/Oracle/Snowflake). Rationale: DBML ist der
-  community-standard mit stabilem Parser, expressiv genug fuer echte Schemas,
-  LLMs erzeugen es zuverlaessig.
-
-- **Export-Formate (MVP):** Mermaid (erDiagram + flowchart) und SQL DDL (via
-  @dbml/core). D2 vertagt.
-
-- **Styling:** Kein externes CSS. Stattdessen gemeinsames `theme.ts` Modul mit
-  zentralen `themeVariables` + `classDef`-Fragmenten, die pro Render injiziert
-  werden.
-
-- **Editing-Mechanik:** **Atomare MCP-Tool-Calls** (add_node, add_flow,
-  add_table, add_column, ...). Kein Full-Document-Rewrite via Prompt.
-  Rationale: Forschung zeigt hoehere Erfolgsrate, kleinere Token-Kosten,
-  bessere Diff-Freundlichkeit. Das existiert bereits; bleibt unveraendert.
-
-- **Hub-Integration:** Tool bleibt eigenstaendiges npm-Paket. TAFKA KI-Hub
-  (Next.js) bindet den Editor als React Components ein und wrappt die
-  MCP-Tools in HTTP-API-Routes (`/api/workspace/:id/...`). Rationale:
-  saubere Trennung, Wiederverwendbarkeit fuer andere Kontexte
-  (Cursor/Claude Code), minimaler doppelter Aufwand.
-
-- **Name:** `viso-mcp` (phonetisch nah an Visio, aber markenrechtlich sauber -
-  keine Microsoft-Kollision). Auf npm verfuegbar gecheckt (21.04.2026).
-
-- **Lizenz:** **MIT**. Rationale: maximal offen, Community-Adoption erleichtert,
-  Standard fuer MCP-Tools. TAFKA behaelt Reputation + Brand-Bindung via README
-  und Package-Name.
-
-- **Repo:** `Daten_Prozess_Visualisierungs_Tool/` wird zu **`viso-mcp/`**
-  umbenannt (Git-History bleibt via `git mv` erhalten). Paketname = Repo-Name.
-
-- **Legacy-Support:** **Kein Legacy-Support.** v1.0 liest ausschliesslich DBML
-  fuer ERDs. One-Time-Migrationsskript `viso-mcp migrate` wird mitgeliefert,
-  aber kein Dual-Format-Read. Pragmatisch: das Tool ist bei v0.2.0, praktisch
-  noch keine Install-Basis in der Wildnis.
-
-- **Agent-Coverage ueber MVP hinaus:** Nach Claude-Code-Release **2-4 Wochen
-  Community-Feedback sammeln** (GitHub Issues, Analytics, Developer-Gespraeche),
-  dann Cursor/Cline/Windsurf/Zed nach Nachfrage priorisieren. Kein
-  Vorab-Commitment auf Reihenfolge.
+- **Distribution:** npm + Auto-Setup-CLI (`npx viso-mcp init`). MVP-Coverage:
+  Claude Code (.mcp.json). Cursor/Cline/Windsurf/Zed nach Community-Feedback.
+- **BPMN-Format:** Custom JSON bleibt (`viso-bpmn-v1`).
+- **ERD-Format:** Wechsel zu DBML via `@dbml/core`.
+- **Export-Formate:** Mermaid (default) + SQL DDL + SVG (fuer PDF).
+- **Styling:** Gemeinsames `theme.ts` Modul, keine externe CSS.
+- **Editing-Mechanik:** Atomare MCP-Tool-Calls **plus** Hybrid-`set_*`-Tools
+  fuer Initial-Drafts.
+- **Auto-Modeling:** Freitext-Input, Human-in-the-Loop, Hybrid (bulk + atomic).
+- **Editor-UX:** Hybrid Final (Canvas-first, Tools links, Properties rechts,
+  Code-Panel per Cmd+/ einblendbar). Siehe Mockup 5.
+- **Touch-optimiert:** Ja (iPad-Workshops).
+- **Hub-Integration:** Standalone npm-Paket, Hub bindet als React Components
+  + HTTP-API-Wrapper ein.
+- **Hub-Storage:** Postgres/Supabase + Drizzle ORM, RLS per workspace_id.
+- **Hub-Rollen:** Beide voll editierberechtigt + Audit-Log. Agent attribuiert
+  als Consultant.
+- **Multiplayer-Logik:** **Nicht im viso-mcp-Core**, sondern auf Hub-Ebene.
+  viso-mcp bleibt Singleplayer.
+- **PDF-Toolchain:** Gotenberg Docker-Microservice in Hetzner Frankfurt EU.
+  HTML→PDF, nicht React-PDF. Austauschbar per ENV.
+- **Name:** `viso-mcp` (phonetisch nah an Visio, markenrechtlich sauber).
+- **Lizenz:** MIT.
+- **Repo:** Rename von `Daten_Prozess_Visualisierungs_Tool/` zu `viso-mcp/`.
+- **Legacy-Support:** Keiner. v1.0 liest nur DBML. `viso-mcp migrate` als
+  One-Time-Skript.
 
 ---
 
 ## MVP Scope
 
-Vier Bausteine, die gemeinsam geliefert werden:
+Vier Bausteine fuer den ersten Release:
 
-1. **ERD-Migration JSON -> DBML** (Kern-Umbau)
+1. **ERD-Migration JSON → DBML**
    - `@dbml/core` integrieren
    - `DiagramStore` liest/schreibt `.dbml` + `.erd.pos.json`
-   - Bestehende MCP-Tools (add_table, add_relation, ...) unveraendert, intern
-     auf DBML umgestellt
-   - SQL DDL Export via `@dbml/core` (Postgres/MySQL/MSSQL/Oracle/Snowflake)
-   - Migrationsskript: alte `.erd.json` -> `.dbml` + `.erd.pos.json`
+   - Bestehende MCP-Tools unveraendert an der Oberflaeche, intern auf DBML
+   - SQL DDL Export (Postgres/MySQL/MSSQL/Oracle/Snowflake)
+   - Migrationsskript `viso-mcp migrate`
 
 2. **Auto-Setup-CLI `npx viso-mcp init`**
-   - Erkennt Claude Code Workspace (sucht `.mcp.json` oder `.claude/`)
-   - Schreibt/erweitert `.mcp.json` mit `viso-mcp` Eintrag
-   - Interaktiver Fallback wenn Env nicht erkannt
-   - Dry-run-Flag
+   - Claude Code Workspace-Erkennung
+   - `.mcp.json` schreiben/erweitern
+   - Dry-run, interaktiver Fallback
 
-3. **Theme-Modul + polished Editor-UI**
-   - `src/theme.ts` mit `themeVariables` + `classDef`-Fragmenten
-   - Mermaid-Exports nutzen konsistentes Theme
-   - Editor-UI: Dark Mode, Tailwind-Clean, A11y-Grundlagen (Tab-Order,
-     ARIA-Labels fuer Canvas-Nodes)
+3. **Theme-Modul + Polished Hybrid-UX**
+   - `src/theme.ts` (themeVariables + classDef)
+   - Hybrid-UX-Editor: Canvas-first, Tools-Sidebar links, Properties rechts,
+     Code-Panel Cmd+/ toggelbar
+   - Dark Mode, A11y-Grundlagen, Touch-Support (Pinch-Zoom, Touch-Drag)
+   - Auto-Layout-Button (ELK)
 
-4. **Hub-ready: React Components + HTTP-API-Wrapper**
-   - ESM-Export des Editor-Bundles (importierbar in Next.js)
-   - Thin HTTP-Adapter: gleiche MCP-Tool-Surface als REST
+4. **Hub-ready: React Components + HTTP-API + Agent-Auto-Modeling**
+   - ESM-Export des Editor-Bundles
+   - HTTP-API-Adapter (gleiche MCP-Surface als REST)
+   - Neue `set_bpmn`, `set_dbml` Tools fuer Bulk-Initial-Drafts
    - Workspace-ID-Parameter durchgereicht, Auth delegiert an Hub
 
-**Was nicht im MVP ist** (bewusst vertagt):
-
-- D2-Export (spaeter als Flag `--export d2`, bei Bedarf)
-- Cursor/Cline/Windsurf/Zed Setup-Zweige in init-CLI
-- Multi-User / Live-Collaboration (Y.js o.ae.) - Workspace-Isolation via
-  Hub reicht zunaechst
-- Richtige BPMN 2.0 XML Import/Export
+**Nicht im MVP:**
+- D2-Export (vertagt)
+- Cursor/Cline/Windsurf/Zed Setup-Zweige
+- Multi-User / Live-Collaboration (lebt auf Hub-Ebene)
+- BPMN 2.0 XML Import/Export
 - Pool/Lane-Darstellung im BPMN-Editor
-- Vollstaendige Prisma/Drizzle-Exports (moeglich via @dbml/core zu DBML,
-  aber nicht first-class)
-- Skill-Markdown fuer Community-Veroeffentlichung (kommt als eigener
-  Release, wenn MVP stabil ist)
+- Prisma/Drizzle-First-Class-Exports
+- Gotenberg-Integration (Hub-Thema, separates Plan)
+- Admin-Report-Editor (Hub-Thema, separates Plan)
+- Skill-Markdown (post-MVP Community-Release)
 
 ---
 
 ## Beziehung zum TAFKA KI-Hub
 
-Der Hub ist **Stufe 2 (BPMN-Sprint)** und teilweise **Stufe 1 (Audit:
-Prozess-Tabelle, IT-Roentgenbild)** auf dieses Tool angewiesen. Wichtige
-Hub-Anforderungen, die Option A erfuellt:
-
-| Anforderung | Erfuellt durch |
+| Hub-Anforderung | Erfuellt durch |
 |---|---|
-| Browser-Editor als Hub-Modul | React Components + ESM-Export, Next.js-Client-Component |
-| Workspace-Isolation | Hub kontrolliert File-Pfade, Tool ist Workspace-agnostisch |
+| Browser-Editor als Hub-Modul | React Components + ESM-Export, Next.js Client Component |
+| Workspace-Isolation | Hub steuert Files/DB, Tool ist Workspace-agnostisch |
 | Agent-Zugriff (Audit-Auto-Modeller) | MCP-Tools + HTTP-API-Wrapper |
-| Audit-Report-PDF mit BPMN | Mermaid-Export rendert in Pandoc/Puppeteer-Pipeline |
+| Audit-Report-PDF mit BPMN | SVG-Export + Gotenberg Microservice |
 | SQL-DDL fuer IT-Roentgenbild | @dbml/core liefert multi-dialect Export |
-| DSGVO/BFSG/AI-Act | Stateless Tool, Isolation via Hub |
-
-Der Hub bleibt dabei entkoppelt: wenn TAFKA das Tool ausbaut, profitieren
-Cursor-/Claude-Code-User gleichzeitig. Wenn externe User das Tool nutzen,
-entsteht Community-Pull fuer den Hub.
+| DSGVO/BFSG/AI-Act | Hetzner EU + Supabase EU + Audit-Log |
+| Multi-User (Consultant+Kunde) | Hub-Layer baut darueber, viso bleibt Singleplayer |
+| iPad-Workshops | Touch-optimierter Canvas im Editor |
+| Screen-Recording-Upload | Attachment-Button im Editor → Supabase Storage |
 
 ---
 
 ## Open Questions
 
-Zwei Detail-Fragen bleiben bewusst offen fuer die Planning-Phase, abhaengig
-von Prototyp-Erkenntnissen bzw. Community-Feedback:
+Zwei Detail-Fragen bleiben bewusst offen fuer die Planning-Phase:
 
 1. **D2-Export in v1.x oder v2.0?** Abhaengig davon, ob Audit-PDFs oder
-   Kunden-Pitches ein ernster Use-Case werden. Entscheidung: nach erstem
-   Hub-Prototyp evaluieren.
+   Kunden-Pitches ein ernster Use-Case werden. Evaluation nach erstem
+   Hub-Prototyp.
 
-2. **Skill-Markdown (SKILL.md) fuer Community-Veroeffentlichung:** eigener
+2. **Skill-Markdown (SKILL.md)** fuer Community-Veroeffentlichung: eigener
    Release nach MVP-Stabilisierung. Nicht MVP.
 
 ---
 
 ## Next Steps
 
-→ `/workflows:plan` fuer Implementierungs-Details
+→ `/workflows:plan docs/brainstorms/2026-04-21-viso-mcp-agent-native-diagram-editor-brainstorm.md`
+
+Im Plan konkretisieren:
+1. Dateistruktur der DBML-Migration, welche Files umgebaut werden
+2. Auto-Setup-CLI: Pfade, Parsing-Logik, Detect-Heuristik
+3. Hybrid-UX-Editor: React-Component-Baum, Shortcuts, ELK-Integration
+4. HTTP-API-Wrapper: OpenAPI-Spec, Auth-Pass-Through
+5. Screen-Recording-Integration: MediaRecorder-API, Supabase Storage Upload
+6. Test-Strategie: Vitest-Tests, Visual-Regression fuer Editor
 
 ---
 
 ## Resolved Questions (Archiv)
 
-**Q: Plugin vs. Skill vs. Web-App?**
-A: Standalone npm-Paket mit MCP-Server + Browser-Editor + Auto-Setup-CLI.
-Skill-Markdown faellt fuer MVP raus, kommt spaeter.
+**Q: Plugin vs. Skill vs. Web-App?** → Standalone npm-Paket mit MCP-Server +
+Browser-Editor + Auto-Setup-CLI.
 
-**Q: MCP vs. eigenes Protokoll?**
-A: MCP. Ist der einzige offene Standard, den alle relevanten Coding-Agents
-sprechen.
+**Q: MCP vs. eigenes Protokoll?** → MCP (einziger offener Standard fuer alle
+Agents).
 
-**Q: Mermaid mit externer Style-Datei?**
-A: Existiert nicht (Shadow-DOM-Rendering). Loesung: geteiltes `theme.ts` Modul.
+**Q: Mermaid mit externer Style-Datei?** → Existiert nicht (Shadow-DOM).
+Loesung: geteiltes `theme.ts` Modul.
 
-**Q: D2 ins MVP?**
-A: Nein, vertagt. Mermaid reicht fuer MVP.
+**Q: D2 ins MVP?** → Nein, vertagt.
 
-**Q: Hub-Integration: Monorepo oder standalone?**
-A: Standalone. Hub bindet ein.
+**Q: Hub-Integration: Monorepo oder standalone?** → Standalone. Hub bindet ein.
 
-**Q: Naming?**
-A: `viso-mcp` (phonetisch-nah an Visio, markenrechtlich sauber).
+**Q: Naming?** → `viso-mcp` (markenrechtlich sauber).
 
-**Q: Lizenz?**
-A: MIT. Offene Adoption ueber Wettbewerbsvorteil priorisiert.
+**Q: Lizenz?** → MIT.
 
-**Q: Repo umbenennen?**
-A: Ja - `viso-mcp/` statt `Daten_Prozess_Visualisierungs_Tool/`.
+**Q: Repo umbenennen?** → Ja - `viso-mcp/`.
 
-**Q: Legacy-Support fuer altes ERD-JSON-Format?**
-A: Nein. Hartes Abschneiden, `viso-mcp migrate` als One-Time-Skript.
+**Q: Legacy-Support fuer altes ERD-JSON-Format?** → Nein. One-Time-Migration.
 
-**Q: Agent-Coverage-Reihenfolge nach Claude Code?**
-A: Erst 2-4 Wochen Community-Feedback, dann priorisieren - kein Vorab-Commit.
+**Q: Agent-Coverage-Reihenfolge nach Claude Code?** → Erst Community-Feedback,
+dann priorisieren.
+
+**Q: Auto-Modeling-Input-Format?** → Freitext-Prompt.
+
+**Q: Autonomie-Grad des Agents?** → Human-in-the-Loop (Agent schlaegt vor,
+User bestaetigt).
+
+**Q: Atomar vs. Bulk beim Agent-Modeling?** → Hybrid (Bulk fuer Draft, Atomar
+fuer Edits).
+
+**Q: Hub-Storage?** → Postgres/Supabase + Drizzle, Row-Level Security.
+
+**Q: Rollen im Hub?** → Beide voll editierberechtigt + Audit-Log.
+
+**Q: Agent-Identitaet im Hub?** → Als Consultant attribuiert.
+
+**Q: Multiplayer-Logik im viso-mcp?** → Nein. viso-mcp bleibt Singleplayer,
+Multi-User lebt auf Hub-Ebene.
+
+**Q: PDF-Toolchain?** → Gotenberg Docker-Microservice (HTML→PDF), nicht
+React-PDF. Hetzner EU Frankfurt.
+
+**Q: Deploy-Target fuer PDF-Service austauschbar?** → Ja, Docker-Standard-Image,
+Wechsel ist eine ENV-Variable.
+
+**Q: Editor-UX-Stil?** → Hybrid Final (Canvas-first + Tools links + Properties
+rechts + Code-Panel Cmd+/). Mockup in `docs/designs/editor-ux-mockup-hybrid-
+final.png`.
+
+**Q: Touch-Support?** → Ja, Pinch-Zoom + Touch-Drag (iPad-Workshops).
+
+**Q: Admin-Report-Editor im Hub?** → Noch nicht spezifiziert. Neue User-Story
+mit diesem Brainstorm als Hub-Abhaengigkeit dokumentiert.
