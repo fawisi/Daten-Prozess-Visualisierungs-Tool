@@ -12,7 +12,7 @@ import type { ErdStore } from './erd-store-interface.js';
  * the full DBML round-trip.
  */
 export class DiagramStore implements ErdStore {
-  constructor(private filePath: string) {}
+  constructor(public readonly filePath: string) {}
 
   async load(): Promise<Diagram> {
     let raw: string;

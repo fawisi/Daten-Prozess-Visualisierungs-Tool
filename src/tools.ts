@@ -1,9 +1,13 @@
 import { z } from 'zod';
+import { writeFile, rename } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { dirname, join } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { SafeIdentifier, ColumnType, RelationType } from './schema.js';
+import { SafeIdentifier, ColumnType, RelationType, DiagramSchema } from './schema.js';
 import { toMermaid } from './export/mermaid.js';
-import { diagramToDbml } from './dbml-store.js';
-import { exporter } from '@dbml/core';
+import { DbmlStore, diagramToDbml, rawDatabaseToDiagram } from './dbml-store.js';
+import { Parser, exporter } from '@dbml/core';
+import { derivePositionsPath, prunePositions } from './positions.js';
 import type { Diagram, Column } from './schema.js';
 import type { ErdStore } from './erd-store-interface.js';
 
@@ -15,6 +19,51 @@ function schemaSummary(d: Diagram): string {
 
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] };
+}
+
+function problemResult(body: Record<string, unknown>) {
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(body, null, 2),
+      },
+    ],
+  };
+}
+
+interface DbmlDiag {
+  message?: string;
+  code?: number | string;
+  start?: { line: number; column: number };
+  end?: { line: number; column: number };
+}
+
+function extractDbmlDiagnostics(err: unknown): DbmlDiag[] {
+  const diags = (err as { diags?: unknown[] })?.diags;
+  if (!Array.isArray(diags)) return [];
+  return diags.map((d) => {
+    const diag = d as Record<string, unknown>;
+    return {
+      message: (diag.message as string | undefined) ?? (diag.msg as string | undefined),
+      code: diag.code as number | string | undefined,
+      start: diag.start as DbmlDiag['start'],
+      end: diag.end as DbmlDiag['end'],
+    };
+  });
+}
+
+function reconstructDiagramOrNull(rawDatabase: unknown): Diagram | null {
+  try {
+    const diagram = rawDatabaseToDiagram(
+      rawDatabase as Parameters<typeof rawDatabaseToDiagram>[0]
+    );
+    const check = DiagramSchema.safeParse(diagram);
+    return check.success ? check.data : null;
+  } catch {
+    return null;
+  }
 }
 
 export function registerTools(server: McpServer, store: ErdStore) {
@@ -294,6 +343,91 @@ export function registerTools(server: McpServer, store: ErdStore) {
         return textResult('Schema is empty. Create tables first.');
       }
       return textResult(toMermaid(diagram));
+    }
+  );
+
+  // --- set_dbml ---
+  server.registerTool(
+    'set_dbml',
+    {
+      description:
+        'Replace the entire ERD with new DBML text in one call. Atomic — the file stays unchanged on parse error. Orphan positions (tables that no longer exist) are pruned from the sidecar.',
+      inputSchema: z.object({
+        dbml: z
+          .string()
+          .min(1, 'DBML text cannot be empty')
+          .describe('Complete DBML schema as a single string'),
+      }),
+    },
+    async ({ dbml }) => {
+      // Only DbmlStore has a .dbml-backed file path. For legacy JSON stores
+      // we reject rather than silently converting the backing format.
+      if (!(store instanceof DbmlStore)) {
+        return problemResult({
+          type: 'https://viso-mcp.dev/problems/unsupported-backing-store',
+          title: 'set_dbml requires a DBML-backed store',
+          detail:
+            'The current ERD file is not a .dbml file. Run `npx viso-mcp migrate <file>` to switch to DBML first.',
+        });
+      }
+
+      let parsedRaw: unknown;
+      try {
+        parsedRaw = Parser.parseDBMLToJSONv2(dbml);
+      } catch (err) {
+        return problemResult({
+          type: 'https://viso-mcp.dev/problems/dbml-parse-error',
+          title: 'DBML parse error',
+          detail:
+            (err as Error).message ||
+            'DBML compiler reported one or more diagnostics — see errors[].',
+          errors: extractDbmlDiagnostics(err),
+        });
+      }
+
+      // Reload via DbmlStore.load() after the write would be the cleanest
+      // validator, but that would persist invalid state on failure. Instead
+      // we run the same rawDatabase -> Diagram mapping against an in-memory
+      // write by delegating to a DbmlStore with the path we are about to
+      // write to — the actual filesystem write only happens once we know
+      // validation passed.
+      const tmpDiagram = reconstructDiagramOrNull(parsedRaw);
+      if (!tmpDiagram) {
+        return problemResult({
+          type: 'https://viso-mcp.dev/problems/dbml-schema-invalid',
+          title: 'DBML parsed but failed internal schema validation',
+          detail:
+            'Reserved identifier or unsupported table/column shape. Check that table and column names match /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/.',
+        });
+      }
+
+      // Atomic write: tmp file + rename. Preserves the original DBML text
+      // so features our internal Diagram cannot represent (indexes, enums,
+      // TableGroups) survive round-trips through set_dbml.
+      const dir = dirname(store.filePath);
+      const tmp = join(dir, `.tmp-${randomUUID()}.dbml`);
+      await writeFile(tmp, dbml.endsWith('\n') ? dbml : dbml + '\n', 'utf-8');
+      await rename(tmp, store.filePath);
+
+      // Prune orphan positions
+      const validTableIds = new Set(Object.keys(tmpDiagram.tables));
+      const prunedIds = await prunePositions(
+        derivePositionsPath(store.filePath),
+        validTableIds
+      );
+
+      return textResult(
+        JSON.stringify(
+          {
+            ok: true,
+            tableCount: Object.keys(tmpDiagram.tables).length,
+            relationCount: tmpDiagram.relations.length,
+            prunedPositions: prunedIds,
+          },
+          null,
+          2
+        )
+      );
     }
   );
 

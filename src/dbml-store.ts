@@ -33,7 +33,7 @@ import type { ErdStore } from './erd-store-interface.js';
  * `.meta.json` sidecar for full-fidelity round-trips is tracked for v1.1.
  */
 export class DbmlStore implements ErdStore {
-  constructor(private readonly filePath: string) {}
+  constructor(public readonly filePath: string) {}
 
   async load(): Promise<Diagram> {
     let raw: string;
@@ -118,7 +118,7 @@ interface RawDatabase {
   project?: { name?: string };
 }
 
-function rawDatabaseToDiagram(raw: RawDatabase): Diagram {
+export function rawDatabaseToDiagram(raw: RawDatabase): Diagram {
   const tables: Diagram['tables'] = {};
   for (const t of raw.tables) {
     // DBML promotes multi-column [pk] attributes into an index with pk=true;

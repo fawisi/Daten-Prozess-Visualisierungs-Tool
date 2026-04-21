@@ -1,8 +1,14 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ProcessStore } from './store.js';
-import { NodeIdentifier, ProcessNodeType, GatewayType } from './schema.js';
+import {
+  NodeIdentifier,
+  ProcessNodeType,
+  GatewayType,
+  ProcessSchema,
+} from './schema.js';
 import { processToMermaid } from './export-mermaid.js';
+import { derivePositionsPath, prunePositions } from '../positions.js';
 import type { Process } from './schema.js';
 
 function processSummary(p: Process): string {
@@ -13,6 +19,18 @@ function processSummary(p: Process): string {
 
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] };
+}
+
+function problemResult(body: Record<string, unknown>) {
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(body, null, 2),
+      },
+    ],
+  };
 }
 
 export function registerProcessTools(server: McpServer, store: ProcessStore) {
@@ -219,6 +237,68 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
         return textResult('Process is empty. Add nodes first.');
       }
       return textResult(processToMermaid(process));
+    }
+  );
+
+  // --- set_bpmn ---
+  server.registerTool(
+    'set_bpmn',
+    {
+      description:
+        'Replace the entire BPMN process with new JSON in one call. Atomic — the file stays unchanged on parse error. Orphan positions (nodes that no longer exist) are pruned from the sidecar.',
+      inputSchema: z.object({
+        json: z
+          .string()
+          .min(1, 'BPMN JSON cannot be empty')
+          .describe('Complete BPMN process as a JSON string'),
+      }),
+    },
+    async ({ json }) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(json);
+      } catch (err) {
+        return problemResult({
+          type: 'https://viso-mcp.dev/problems/bpmn-parse-error',
+          title: 'BPMN JSON parse error',
+          detail: (err as Error).message,
+        });
+      }
+
+      const validated = ProcessSchema.safeParse(parsed);
+      if (!validated.success) {
+        return problemResult({
+          type: 'https://viso-mcp.dev/problems/bpmn-schema-invalid',
+          title: 'BPMN JSON failed schema validation',
+          detail: 'Zod validation failed — see errors[] for details',
+          errors: validated.error.issues.map((issue) => ({
+            path: issue.path.join('.'),
+            message: issue.message,
+            code: issue.code,
+          })),
+        });
+      }
+
+      await store.save(validated.data);
+
+      const validIds = new Set(Object.keys(validated.data.nodes));
+      const prunedIds = await prunePositions(
+        derivePositionsPath(store.filePath),
+        validIds
+      );
+
+      return textResult(
+        JSON.stringify(
+          {
+            ok: true,
+            nodeCount: Object.keys(validated.data.nodes).length,
+            flowCount: validated.data.flows.length,
+            prunedPositions: prunedIds,
+          },
+          null,
+          2
+        )
+      );
     }
   );
 }
