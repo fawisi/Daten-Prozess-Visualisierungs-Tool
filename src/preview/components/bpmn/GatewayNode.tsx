@@ -1,8 +1,10 @@
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import type { PersistentStatus } from '@/i18n/useI18n.js';
 
 interface GatewayNodeData {
   label: string;
+  status?: PersistentStatus;
 }
 
 export const GatewayNode = memo(function GatewayNode({
@@ -17,8 +19,11 @@ export const GatewayNode = memo(function GatewayNode({
       className="bpmn-node"
       title={data.label}
       role="listitem"
-      aria-label={`BPMN exclusive gateway ${data.label || id}`}
+      aria-label={`BPMN exclusive gateway ${data.label || id}${
+        data.status ? ` status:${data.status}` : ''
+      }`}
       tabIndex={0}
+      data-status={data.status ?? undefined}
     >
       <div className="bpmn-gateway">
         <span className="bpmn-gateway__icon" aria-hidden="true">X</span>

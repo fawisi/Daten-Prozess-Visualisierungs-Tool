@@ -1,38 +1,31 @@
 import React, { useEffect, useState } from 'react';
-import { X, Palette } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Input } from '@/components/ui/input.js';
 import { Button } from '@/components/ui/button.js';
 import { useToolStore, type SelectedNode } from '@/state/useToolStore.js';
+import { useI18n, type PersistentStatus } from '@/i18n/useI18n.js';
 import { cn } from '@/lib/utils.js';
 
-const BPMN_TYPE_LABELS: Record<string, string> = {
-  'start-event': 'Start Event',
-  'end-event': 'End Event',
-  task: 'Task',
-  gateway: 'Gateway',
-};
-
-const BPMN_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'start-event', label: 'Start Event' },
-  { value: 'end-event', label: 'End Event' },
-  { value: 'task', label: 'Task' },
-  { value: 'gateway', label: 'Gateway' },
+const BPMN_TYPE_OPTIONS: { value: string; translationKey: keyof ReturnType<typeof useI18n>['t']['toolPalette'] }[] = [
+  { value: 'start-event', translationKey: 'start_event' },
+  { value: 'end-event', translationKey: 'end_event' },
+  { value: 'task', translationKey: 'task' },
+  { value: 'gateway', translationKey: 'gateway' },
 ];
 
-const COLOR_SWATCHES = [
-  { value: '#4F46E5', name: 'Indigo' },
-  { value: '#10B981', name: 'Emerald' },
-  { value: '#F59E0B', name: 'Amber' },
-  { value: '#EF4444', name: 'Red' },
-  { value: '#8B5CF6', name: 'Violet' },
-  { value: '#64748B', name: 'Slate' },
-];
+const STATUS_OPTIONS: PersistentStatus[] = ['open', 'done', 'blocked'];
 
 export interface NodeUpdate {
   label?: string;
   description?: string;
   type?: string;
+  /**
+   * @deprecated since v1.1 — free color-picker is removed in favour of
+   *   `status`. Hub consumers that still send `color` can pass it; the
+   *   server ignores it for rendering. Will be removed in v1.3.
+   */
   color?: string;
+  status?: PersistentStatus | null;
 }
 
 export interface PropertiesPanelProps {
@@ -89,28 +82,34 @@ function NodeProperties({
   attachmentSlot,
   attachmentEligibleTypes,
 }: NodePropertiesProps) {
+  const { t, statusLabel } = useI18n();
   const rawLabel = (node.data.label as string | undefined) ?? node.id;
   const rawDescription = (node.data.description as string | undefined) ?? '';
   const rawNodeType = (node.data.nodeType as string | undefined) ?? node.type;
-  const rawColor = (node.data.color as string | undefined) ?? COLOR_SWATCHES[0].value;
+  const rawStatus =
+    (node.data.status as PersistentStatus | undefined) ??
+    ((node.data as { originalStatus?: PersistentStatus }).originalStatus ?? null);
 
   const [label, setLabel] = useState(rawLabel);
   const [description, setDescription] = useState(rawDescription);
   const [nodeType, setNodeType] = useState(rawNodeType);
-  const [color, setColor] = useState(rawColor);
+  const [status, setStatus] = useState<PersistentStatus | null>(rawStatus);
 
   // Reset state when selection changes
   useEffect(() => {
     setLabel(rawLabel);
     setDescription(rawDescription);
     setNodeType(rawNodeType);
-    setColor(rawColor);
-  }, [node.id, rawLabel, rawDescription, rawNodeType, rawColor]);
+    setStatus(rawStatus);
+  }, [node.id, rawLabel, rawDescription, rawNodeType, rawStatus]);
 
   const typeLabel =
     node.diagramType === 'bpmn'
-      ? BPMN_TYPE_LABELS[rawNodeType] ?? 'Node'
-      : 'Table';
+      ? t.toolPalette[
+          (BPMN_TYPE_OPTIONS.find((o) => o.value === rawNodeType)?.translationKey ??
+            'task') as keyof typeof t.toolPalette
+        ]
+      : t.properties.title_node;
 
   const isAttachmentEligible = attachmentEligibleTypes.includes(rawNodeType);
 
@@ -136,14 +135,14 @@ function NodeProperties({
           type="button"
           onClick={onClose}
           className="text-muted-foreground hover:text-foreground p-1 rounded -mr-1"
-          aria-label="Close properties panel"
+          aria-label={t.properties.close}
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
-        <Field label="Label">
+        <Field label={t.properties.label}>
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
@@ -156,7 +155,7 @@ function NodeProperties({
         </Field>
 
         {node.diagramType === 'bpmn' && (
-          <Field label="Type">
+          <Field label={t.properties.type}>
             <select
               value={nodeType}
               onChange={(e) => {
@@ -167,60 +166,59 @@ function NodeProperties({
             >
               {BPMN_TYPE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {t.toolPalette[opt.translationKey as keyof typeof t.toolPalette]}
                 </option>
               ))}
             </select>
           </Field>
         )}
 
-        <Field label="Farbe">
-          <div className="flex items-center gap-2 flex-wrap">
-            {COLOR_SWATCHES.map((swatch) => (
-              <button
-                key={swatch.value}
-                type="button"
-                onClick={() => {
-                  setColor(swatch.value);
-                  handleCommit('color', swatch.value);
-                }}
-                aria-label={swatch.name}
-                title={swatch.name}
-                className={cn(
-                  'size-6 rounded-full border-2 transition-transform',
-                  color === swatch.value
-                    ? 'border-foreground scale-110'
-                    : 'border-transparent hover:scale-105'
-                )}
-                style={{ background: swatch.value }}
-              />
-            ))}
-            <label className="size-6 rounded-full border-2 border-dashed border-muted-foreground flex items-center justify-center cursor-pointer hover:border-foreground">
-              <Palette className="h-3 w-3 text-muted-foreground" />
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                onBlur={() => handleCommit('color', color)}
-                className="sr-only"
-              />
-            </label>
+        <Field label={t.properties.status}>
+          <div
+            role="radiogroup"
+            aria-label={t.properties.status}
+            className="grid grid-cols-3 gap-1"
+          >
+            {STATUS_OPTIONS.map((opt) => {
+              const selected = status === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => {
+                    const next = selected ? null : opt;
+                    setStatus(next);
+                    handleCommit('status', next);
+                  }}
+                  className={cn(
+                    'h-8 rounded-md border px-2 text-xs font-medium transition-colors',
+                    selected
+                      ? statusButtonActiveClass(opt)
+                      : 'bg-background hover:bg-accent text-muted-foreground'
+                  )}
+                >
+                  {statusLabel(opt)}
+                </button>
+              );
+            })}
           </div>
         </Field>
 
-        <Field label="Kommentar">
+        <Field label={t.properties.comment}>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={() => handleCommit('description', description)}
             rows={3}
-            placeholder="Add notes…"
+            placeholder={t.properties.comment_placeholder}
             className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm resize-none"
           />
         </Field>
 
         {isAttachmentEligible && attachmentSlot && (
-          <Field label="Attachments">
+          <Field label={t.properties.attachments}>
             {attachmentSlot({
               nodeId: node.id,
               nodeType: rawNodeType,
@@ -230,7 +228,7 @@ function NodeProperties({
         )}
 
         {isAttachmentEligible && !attachmentSlot && (
-          <Field label="Attachments">
+          <Field label={t.properties.attachments}>
             <Button variant="default" size="sm" className="w-full">
               Screen-Recording starten
             </Button>
@@ -242,6 +240,17 @@ function NodeProperties({
       </div>
     </aside>
   );
+}
+
+function statusButtonActiveClass(status: PersistentStatus): string {
+  switch (status) {
+    case 'open':
+      return 'bg-sky-500/15 border-sky-500 text-sky-600 ring-1 ring-sky-500/50';
+    case 'done':
+      return 'bg-emerald-500/15 border-emerald-500 text-emerald-600 ring-1 ring-emerald-500/50';
+    case 'blocked':
+      return 'bg-red-500/15 border-red-500 text-red-600 ring-1 ring-red-500/50';
+  }
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -260,6 +269,7 @@ interface EmptyPropertiesProps {
 }
 
 function EmptyProperties({ meta }: EmptyPropertiesProps) {
+  const { t } = useI18n();
   return (
     <aside
       className="w-[300px] shrink-0 border-l bg-background/80 flex flex-col"
@@ -267,7 +277,7 @@ function EmptyProperties({ meta }: EmptyPropertiesProps) {
     >
       <div className="px-4 pt-4 pb-3 border-b">
         <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-          Diagram
+          {t.properties.diagram}
         </div>
         <div className="font-semibold text-sm truncate">
           {meta?.name ?? 'Untitled'}
@@ -278,7 +288,7 @@ function EmptyProperties({ meta }: EmptyPropertiesProps) {
         {meta?.format && (
           <div className="space-y-1">
             <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-              Format
+              {t.properties.format}
             </div>
             <div className="font-mono text-xs">{meta.format}</div>
           </div>
@@ -293,19 +303,9 @@ function EmptyProperties({ meta }: EmptyPropertiesProps) {
         )}
         <div className="rounded-md border-dashed border-2 border-muted p-3 text-xs text-muted-foreground leading-relaxed">
           <p className="mb-1.5 font-medium text-foreground/80">
-            Nichts ausgewaehlt
+            {t.properties.empty_hint_head}
           </p>
-          <p>
-            Klicke einen Node im Canvas, oder nutze{' '}
-            <kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[10px]">
-              Cmd
-            </kbd>
-            <span className="mx-0.5">+</span>
-            <kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[10px]">
-              K
-            </kbd>{' '}
-            fuer Command-Palette.
-          </p>
+          <p>{t.properties.empty_hint_body}</p>
         </div>
       </div>
     </aside>

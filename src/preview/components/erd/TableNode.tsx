@@ -1,13 +1,16 @@
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
+import { StatusBadge } from '@/components/shared/StatusBadge.js';
 import type { Column } from '../../schema.js';
+import type { PersistentStatus } from '@/i18n/useI18n.js';
 
 interface TableNodeData {
   label: string;
   columns: Column[];
   description?: string;
   isNew?: boolean;
+  status?: PersistentStatus;
 }
 
 const TableIcon = () => (
@@ -34,9 +37,9 @@ const ColumnRow = memo(({ column }: { column: Column }) => (
 ColumnRow.displayName = 'ColumnRow';
 
 function TableNodeComponent({ id, data, selected }: NodeProps & { data: TableNodeData }) {
-  const { label, columns, isNew } = data;
+  const { label, columns, isNew, status } = data;
   const pkCount = columns.filter((c) => c.primary).length;
-  const ariaLabel = `ERD table ${label || id} with ${columns.length} column${columns.length === 1 ? '' : 's'}, ${pkCount} primary key${pkCount === 1 ? '' : 's'}`;
+  const ariaLabel = `ERD table ${label || id} with ${columns.length} column${columns.length === 1 ? '' : 's'}, ${pkCount} primary key${pkCount === 1 ? '' : 's'}${status ? `, status ${status}` : ''}`;
 
   return (
     <div
@@ -44,11 +47,17 @@ function TableNodeComponent({ id, data, selected }: NodeProps & { data: TableNod
       role="listitem"
       aria-label={ariaLabel}
       tabIndex={0}
+      data-status={status ?? undefined}
     >
       <div className="table-node__header">
         <span className="table-node__icon"><TableIcon /></span>
         <span className="table-node__name">{label}</span>
         <span className="table-node__count">{columns.length}</span>
+        {status && (
+          <span className="table-node__status">
+            <StatusBadge status={status} compact />
+          </span>
+        )}
       </div>
       <div className="table-node__body">
         {columns.map((col) => (

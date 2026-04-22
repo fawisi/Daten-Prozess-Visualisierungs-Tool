@@ -28,6 +28,7 @@ function processToNodesAndEdges(process: Process): { nodes: Node[]; edges: Edge[
       description: node.description,
       nodeType: node.type,
       gatewayType: node.gatewayType,
+      status: node.status,
     },
   }));
 

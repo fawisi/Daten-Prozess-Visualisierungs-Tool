@@ -3,6 +3,7 @@ import { TooltipProvider } from './components/ui/tooltip.js';
 import { ToolStoreProvider, type SelectedNode } from './state/useToolStore.js';
 import { ApiConfigProvider } from './state/ApiConfig.js';
 import { ThemeProvider } from './state/useTheme.js';
+import { I18nProvider, type Locale } from './i18n/useI18n.js';
 import { EditorShell } from './App.js';
 
 export interface VisoEditorProps {
@@ -44,6 +45,13 @@ export interface VisoEditorProps {
    * `<html>`; otherwise the two providers will fight over the class.
    */
   manageTheme?: boolean;
+  /**
+   * Active UI locale. Default `'de'`. `'en'` ships with the same keys as
+   * `de` in v1.1 and switches to the English dictionary once values are
+   * populated. The persistent schema stays English-only (EN status enum,
+   * EN export content).
+   */
+  locale?: Locale;
 }
 
 /**
@@ -72,6 +80,7 @@ export function VisoEditor({
   onSelectionChange,
   className,
   manageTheme = true,
+  locale = 'de',
 }: VisoEditorProps) {
   const shell = (
     <ApiConfigProvider
@@ -79,19 +88,21 @@ export function VisoEditor({
       workspaceId={workspaceId}
       authToken={authToken}
     >
-      <TooltipProvider>
-        <ToolStoreProvider>
-          <div className={className ?? 'h-full w-full'}>
-            <EditorShell
-              readOnly={readOnly}
-              attachmentSlot={attachmentSlot}
-              attachmentEligibleTypes={attachmentEligibleTypes}
-              initialDiagramType={initialDiagramType}
-              onSelectionChange={onSelectionChange}
-            />
-          </div>
-        </ToolStoreProvider>
-      </TooltipProvider>
+      <I18nProvider locale={locale}>
+        <TooltipProvider>
+          <ToolStoreProvider>
+            <div className={className ?? 'h-full w-full'}>
+              <EditorShell
+                readOnly={readOnly}
+                attachmentSlot={attachmentSlot}
+                attachmentEligibleTypes={attachmentEligibleTypes}
+                initialDiagramType={initialDiagramType}
+                onSelectionChange={onSelectionChange}
+              />
+            </div>
+          </ToolStoreProvider>
+        </TooltipProvider>
+      </I18nProvider>
     </ApiConfigProvider>
   );
   return manageTheme ? <ThemeProvider>{shell}</ThemeProvider> : shell;

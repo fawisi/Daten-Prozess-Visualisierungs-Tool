@@ -425,3 +425,54 @@
   background: var(--edge-stroke);
   border: 2px solid var(--canvas-bg);
 }
+
+/* ========================================
+   Status overlay (applied via data-status)
+   Mirrors the Mermaid `statusClassDefs` so canvas + export stay visually
+   consistent. BPMN tasks get a border, tables get an outline because
+   the table border already carries schema-state information.
+   ======================================== */
+.bpmn-node[data-status='open'] .bpmn-task,
+.bpmn-node[data-status='open'] .bpmn-start-event,
+.bpmn-node[data-status='open'] .bpmn-end-event,
+.bpmn-node[data-status='open'] .bpmn-gateway {
+  border-color: #0ea5e9;
+}
+
+.bpmn-node[data-status='done'] .bpmn-task,
+.bpmn-node[data-status='done'] .bpmn-start-event,
+.bpmn-node[data-status='done'] .bpmn-end-event,
+.bpmn-node[data-status='done'] .bpmn-gateway {
+  border-color: #10b981;
+}
+
+.bpmn-node[data-status='blocked'] .bpmn-task,
+.bpmn-node[data-status='blocked'] .bpmn-start-event,
+.bpmn-node[data-status='blocked'] .bpmn-end-event,
+.bpmn-node[data-status='blocked'] .bpmn-gateway {
+  border-color: #ef4444;
+  border-width: 2px;
+}
+
+.table-node[data-status='open'] {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+}
+.table-node[data-status='done'] {
+  outline: 2px solid #10b981;
+  outline-offset: 2px;
+}
+.table-node[data-status='blocked'] {
+  outline: 2px solid #ef4444;
+  outline-offset: 2px;
+}
+
+.bpmn-task__status {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.table-node__status {
+  margin-left: auto;
+}
