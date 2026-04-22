@@ -28,18 +28,11 @@ describe('mode-sidecar', () => {
     expect(loaded).toEqual({ kind: 'bpmn', mode: 'simple', version: '1.1' });
   });
 
-  it('rejects a landscape-kind sidecar in v1.1 (branch not yet implemented)', async () => {
+  it('round-trips a landscape mode sidecar', async () => {
     const source = join(dir, 'ops.landscape.json');
-    const sidecarPath = deriveModePath(source);
-    await writeFile(
-      sidecarPath,
-      JSON.stringify({ kind: 'landscape', mode: 'l2', version: '1.1' }),
-      'utf-8'
-    );
-    // The landscape branch is added in P2 (plan R7). Until then, no
-    // producer exists, and the loader should reject — an unrecognized
-    // kind must never silently succeed.
-    await expect(loadModeSidecar(source)).rejects.toThrow(/Invalid mode sidecar/);
+    await saveModeSidecar(source, { kind: 'landscape', mode: 'l2', version: '1.1' });
+    const loaded = await loadModeSidecar(source);
+    expect(loaded).toEqual({ kind: 'landscape', mode: 'l2', version: '1.1' });
   });
 
   it('rejects a sidecar with a malformed JSON body', async () => {
