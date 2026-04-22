@@ -1,0 +1,313 @@
+import React, { useEffect, useState } from 'react';
+import { X, Palette } from 'lucide-react';
+import { Input } from '@/components/ui/input.js';
+import { Button } from '@/components/ui/button.js';
+import { useToolStore, type SelectedNode } from '@/state/useToolStore.js';
+import { cn } from '@/lib/utils.js';
+
+const BPMN_TYPE_LABELS: Record<string, string> = {
+  'start-event': 'Start Event',
+  'end-event': 'End Event',
+  task: 'Task',
+  gateway: 'Gateway',
+};
+
+const BPMN_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'start-event', label: 'Start Event' },
+  { value: 'end-event', label: 'End Event' },
+  { value: 'task', label: 'Task' },
+  { value: 'gateway', label: 'Gateway' },
+];
+
+const COLOR_SWATCHES = [
+  { value: '#4F46E5', name: 'Indigo' },
+  { value: '#10B981', name: 'Emerald' },
+  { value: '#F59E0B', name: 'Amber' },
+  { value: '#EF4444', name: 'Red' },
+  { value: '#8B5CF6', name: 'Violet' },
+  { value: '#64748B', name: 'Slate' },
+];
+
+export interface NodeUpdate {
+  label?: string;
+  description?: string;
+  type?: string;
+  color?: string;
+}
+
+interface PropertiesPanelProps {
+  diagramMeta?: {
+    name?: string;
+    format?: string;
+    itemCount?: number;
+    itemLabel?: string;
+  };
+  onUpdateNode?: (id: string, update: NodeUpdate) => void;
+  attachmentSlot?: (ctx: {
+    nodeId: string;
+    nodeType: string;
+    diagramType: 'bpmn' | 'erd';
+  }) => React.ReactNode;
+  attachmentEligibleTypes?: string[];
+}
+
+export function PropertiesPanel({
+  diagramMeta,
+  onUpdateNode,
+  attachmentSlot,
+  attachmentEligibleTypes = ['task', 'table'],
+}: PropertiesPanelProps) {
+  const { selectedNode, setSelectedNode } = useToolStore();
+
+  if (!selectedNode) {
+    return <EmptyProperties meta={diagramMeta} />;
+  }
+
+  return (
+    <NodeProperties
+      node={selectedNode}
+      onClose={() => setSelectedNode(null)}
+      onUpdateNode={onUpdateNode}
+      attachmentSlot={attachmentSlot}
+      attachmentEligibleTypes={attachmentEligibleTypes}
+    />
+  );
+}
+
+interface NodePropertiesProps {
+  node: SelectedNode;
+  onClose: () => void;
+  onUpdateNode?: (id: string, update: NodeUpdate) => void;
+  attachmentSlot?: PropertiesPanelProps['attachmentSlot'];
+  attachmentEligibleTypes: string[];
+}
+
+function NodeProperties({
+  node,
+  onClose,
+  onUpdateNode,
+  attachmentSlot,
+  attachmentEligibleTypes,
+}: NodePropertiesProps) {
+  const rawLabel = (node.data.label as string | undefined) ?? node.id;
+  const rawDescription = (node.data.description as string | undefined) ?? '';
+  const rawNodeType = (node.data.nodeType as string | undefined) ?? node.type;
+  const rawColor = (node.data.color as string | undefined) ?? COLOR_SWATCHES[0].value;
+
+  const [label, setLabel] = useState(rawLabel);
+  const [description, setDescription] = useState(rawDescription);
+  const [nodeType, setNodeType] = useState(rawNodeType);
+  const [color, setColor] = useState(rawColor);
+
+  // Reset state when selection changes
+  useEffect(() => {
+    setLabel(rawLabel);
+    setDescription(rawDescription);
+    setNodeType(rawNodeType);
+    setColor(rawColor);
+  }, [node.id, rawLabel, rawDescription, rawNodeType, rawColor]);
+
+  const typeLabel =
+    node.diagramType === 'bpmn'
+      ? BPMN_TYPE_LABELS[rawNodeType] ?? 'Node'
+      : 'Table';
+
+  const isAttachmentEligible = attachmentEligibleTypes.includes(rawNodeType);
+
+  function handleCommit<K extends keyof NodeUpdate>(key: K, value: NodeUpdate[K]) {
+    onUpdateNode?.(node.id, { [key]: value } as NodeUpdate);
+  }
+
+  return (
+    <aside
+      className="w-[300px] shrink-0 border-l bg-background/80 flex flex-col"
+      aria-label="Properties Panel"
+    >
+      <div className="flex items-start justify-between px-4 pt-4 pb-3 border-b">
+        <div className="min-w-0">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+            {typeLabel}
+          </div>
+          <div className="font-semibold text-sm truncate" title={label}>
+            {label || node.id}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-muted-foreground hover:text-foreground p-1 rounded -mr-1"
+          aria-label="Close properties panel"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+        <Field label="Label">
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            onBlur={() => handleCommit('label', label)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+            className="h-8 text-sm"
+          />
+        </Field>
+
+        {node.diagramType === 'bpmn' && (
+          <Field label="Type">
+            <select
+              value={nodeType}
+              onChange={(e) => {
+                setNodeType(e.target.value);
+                handleCommit('type', e.target.value);
+              }}
+              className="h-8 w-full rounded-md border bg-background px-2 text-sm"
+            >
+              {BPMN_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        <Field label="Farbe">
+          <div className="flex items-center gap-2 flex-wrap">
+            {COLOR_SWATCHES.map((swatch) => (
+              <button
+                key={swatch.value}
+                type="button"
+                onClick={() => {
+                  setColor(swatch.value);
+                  handleCommit('color', swatch.value);
+                }}
+                aria-label={swatch.name}
+                title={swatch.name}
+                className={cn(
+                  'size-6 rounded-full border-2 transition-transform',
+                  color === swatch.value
+                    ? 'border-foreground scale-110'
+                    : 'border-transparent hover:scale-105'
+                )}
+                style={{ background: swatch.value }}
+              />
+            ))}
+            <label className="size-6 rounded-full border-2 border-dashed border-muted-foreground flex items-center justify-center cursor-pointer hover:border-foreground">
+              <Palette className="h-3 w-3 text-muted-foreground" />
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                onBlur={() => handleCommit('color', color)}
+                className="sr-only"
+              />
+            </label>
+          </div>
+        </Field>
+
+        <Field label="Kommentar">
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            onBlur={() => handleCommit('description', description)}
+            rows={3}
+            placeholder="Add notes…"
+            className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm resize-none"
+          />
+        </Field>
+
+        {isAttachmentEligible && attachmentSlot && (
+          <Field label="Attachments">
+            {attachmentSlot({
+              nodeId: node.id,
+              nodeType: rawNodeType,
+              diagramType: node.diagramType,
+            })}
+          </Field>
+        )}
+
+        {isAttachmentEligible && !attachmentSlot && (
+          <Field label="Attachments">
+            <Button variant="default" size="sm" className="w-full">
+              Screen-Recording starten
+            </Button>
+            <p className="text-[10px] text-muted-foreground mt-1.5">
+              Hub-Integration injiziert eigene Komponente via <code className="font-mono">attachmentSlot</code>.
+            </p>
+          </Field>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+interface EmptyPropertiesProps {
+  meta?: PropertiesPanelProps['diagramMeta'];
+}
+
+function EmptyProperties({ meta }: EmptyPropertiesProps) {
+  return (
+    <aside
+      className="w-[300px] shrink-0 border-l bg-background/80 flex flex-col"
+      aria-label="Properties Panel (no selection)"
+    >
+      <div className="px-4 pt-4 pb-3 border-b">
+        <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+          Diagram
+        </div>
+        <div className="font-semibold text-sm truncate">
+          {meta?.name ?? 'Untitled'}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {meta?.format && (
+          <div className="space-y-1">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              Format
+            </div>
+            <div className="font-mono text-xs">{meta.format}</div>
+          </div>
+        )}
+        {typeof meta?.itemCount === 'number' && (
+          <div className="space-y-1">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              {meta.itemLabel ?? 'Items'}
+            </div>
+            <div className="font-mono text-xs">{meta.itemCount}</div>
+          </div>
+        )}
+        <div className="rounded-md border-dashed border-2 border-muted p-3 text-xs text-muted-foreground leading-relaxed">
+          <p className="mb-1.5 font-medium text-foreground/80">
+            Nichts ausgewaehlt
+          </p>
+          <p>
+            Klicke einen Node im Canvas, oder nutze{' '}
+            <kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[10px]">
+              Cmd
+            </kbd>
+            <span className="mx-0.5">+</span>
+            <kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[10px]">
+              K
+            </kbd>{' '}
+            fuer Command-Palette.
+          </p>
+        </div>
+      </div>
+    </aside>
+  );
+}

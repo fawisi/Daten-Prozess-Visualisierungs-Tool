@@ -159,5 +159,40 @@ export function useProcessSync() {
     [savePositions]
   );
 
-  return { nodes, edges, status, isEmpty, onNodesChange, setNodes, setEdges };
+  const applyAutoLayout = useCallback(async () => {
+    if (nodes.length === 0) return;
+    const laidOut = await computeLayout(nodes, edges, {});
+    setNodes(laidOut);
+    savePositions(laidOut);
+  }, [nodes, edges, savePositions]);
+
+  const applyPositions = useCallback((positions: ProcessPositions) => {
+    setNodes((prev) =>
+      prev.map((n) =>
+        positions[n.id]
+          ? { ...n, position: { x: positions[n.id].x, y: positions[n.id].y } }
+          : n
+      )
+    );
+  }, []);
+
+  const snapshotPositions = useCallback((): ProcessPositions => {
+    const snap: ProcessPositions = {};
+    for (const n of nodes) snap[n.id] = { x: n.position.x, y: n.position.y };
+    return snap;
+  }, [nodes]);
+
+  return {
+    nodes,
+    edges,
+    status,
+    isEmpty,
+    onNodesChange,
+    setNodes,
+    setEdges,
+    applyAutoLayout,
+    applyPositions,
+    snapshotPositions,
+    savePositions,
+  };
 }

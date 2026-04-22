@@ -1,0 +1,94 @@
+import React from 'react';
+import { MousePointer2, Hand, Circle, Square, Diamond, CircleDot } from 'lucide-react';
+import { useToolStore, type Tool } from '@/state/useToolStore.js';
+import { cn } from '@/lib/utils.js';
+
+interface ToolDef {
+  id: Tool;
+  label: string;
+  shortcut: string;
+  icon: React.ComponentType<{ className?: string }>;
+  group: 'cursor' | 'shape';
+  diagramType?: 'bpmn' | 'erd';
+}
+
+const TOOLS: ToolDef[] = [
+  { id: 'pointer', label: 'Pointer', shortcut: 'V', icon: MousePointer2, group: 'cursor' },
+  { id: 'pan', label: 'Pan', shortcut: 'H', icon: Hand, group: 'cursor' },
+  { id: 'start-event', label: 'Start Event', shortcut: '1', icon: Circle, group: 'shape', diagramType: 'bpmn' },
+  { id: 'end-event', label: 'End Event', shortcut: '2', icon: CircleDot, group: 'shape', diagramType: 'bpmn' },
+  { id: 'task', label: 'Task', shortcut: '3', icon: Square, group: 'shape', diagramType: 'bpmn' },
+  { id: 'gateway', label: 'Gateway', shortcut: '4', icon: Diamond, group: 'shape', diagramType: 'bpmn' },
+];
+
+interface ToolPaletteProps {
+  diagramType: 'bpmn' | 'erd' | null;
+}
+
+export function ToolPalette({ diagramType }: ToolPaletteProps) {
+  const { activeTool, setActiveTool } = useToolStore();
+
+  const visibleTools = TOOLS.filter(
+    (t) => !t.diagramType || t.diagramType === diagramType
+  );
+
+  const cursorTools = visibleTools.filter((t) => t.group === 'cursor');
+  const shapeTools = visibleTools.filter((t) => t.group === 'shape');
+
+  return (
+    <aside
+      className="w-[68px] shrink-0 border-r bg-background/80 flex flex-col items-center py-3 gap-1"
+      aria-label="Tool Palette"
+    >
+      {cursorTools.map((tool) => (
+        <ToolButton
+          key={tool.id}
+          tool={tool}
+          active={activeTool === tool.id}
+          onClick={() => setActiveTool(tool.id)}
+        />
+      ))}
+
+      {shapeTools.length > 0 && <div className="w-8 h-px bg-border my-2" />}
+
+      {shapeTools.map((tool) => (
+        <ToolButton
+          key={tool.id}
+          tool={tool}
+          active={activeTool === tool.id}
+          onClick={() => setActiveTool(tool.id)}
+        />
+      ))}
+    </aside>
+  );
+}
+
+interface ToolButtonProps {
+  tool: ToolDef;
+  active: boolean;
+  onClick: () => void;
+}
+
+function ToolButton({ tool, active, onClick }: ToolButtonProps) {
+  const Icon = tool.icon;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`${tool.label} (${tool.shortcut})`}
+      aria-pressed={active}
+      title={`${tool.label} — ${tool.shortcut}`}
+      className={cn(
+        'group relative size-11 rounded-md flex items-center justify-center transition-colors',
+        active
+          ? 'bg-primary/15 text-primary ring-1 ring-primary/50'
+          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+      )}
+    >
+      <Icon className="h-5 w-5" />
+      <span className="absolute bottom-0.5 right-0.5 text-[9px] font-mono text-muted-foreground/60 leading-none">
+        {tool.shortcut}
+      </span>
+    </button>
+  );
+}

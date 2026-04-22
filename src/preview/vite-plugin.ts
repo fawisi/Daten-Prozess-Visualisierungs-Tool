@@ -87,6 +87,16 @@ export function visoPlugin(
           }
         }
 
+        // Raw ERD source (for Code Panel)
+        if (req.url === '/__viso-api/source') {
+          if (req.method === 'GET') {
+            return serveRaw(res, erdSchemaPath, '{}');
+          }
+          if (req.method === 'PUT') {
+            return writeRawBody(req, res, erdSchemaPath);
+          }
+        }
+
         // === BPMN Routes ===
         if (req.url === '/__viso-api/bpmn/schema' && req.method === 'GET') {
           return serveFile(res, bpmnSchemaPath, {
@@ -102,6 +112,16 @@ export function visoPlugin(
           }
           if (req.method === 'PUT') {
             return writeJsonBody(req, res, bpmnPositionsPath);
+          }
+        }
+
+        // Raw BPMN source (for Code Panel)
+        if (req.url === '/__viso-api/bpmn/source') {
+          if (req.method === 'GET') {
+            return serveRaw(res, bpmnSchemaPath, '{}');
+          }
+          if (req.method === 'PUT') {
+            return writeRawBody(req, res, bpmnSchemaPath);
           }
         }
 
@@ -170,6 +190,45 @@ function writeJsonBody(
     } catch {
       res.statusCode = 400;
       res.end('Invalid JSON');
+    }
+  });
+}
+
+async function serveRaw(
+  res: import('http').ServerResponse,
+  path: string,
+  fallback: string
+) {
+  try {
+    const data = await readFile(path, 'utf-8');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.end(data);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.end(fallback);
+    } else {
+      res.statusCode = 500;
+      res.end('Internal Server Error');
+    }
+  }
+}
+
+function writeRawBody(
+  req: import('http').IncomingMessage,
+  res: import('http').ServerResponse,
+  path: string
+) {
+  let body = '';
+  req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+  req.on('end', async () => {
+    try {
+      await writeFile(path, body, 'utf-8');
+      res.statusCode = 200;
+      res.end('OK');
+    } catch {
+      res.statusCode = 500;
+      res.end('Write failed');
     }
   });
 }
