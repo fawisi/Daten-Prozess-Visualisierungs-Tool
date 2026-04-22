@@ -118,21 +118,24 @@ export function ApiConfigProvider({
   return <ApiConfigContext.Provider value={value}>{children}</ApiConfigContext.Provider>;
 }
 
+// Stable singleton for the no-provider fallback. Creating a fresh object
+// on every `useApiConfig()` call would re-fire every downstream `[api]`
+// useEffect and drop the WebSocket on every parent re-render.
+const DEFAULT_API: ApiConfigValue = {
+  endpoints: DEFAULT_ENDPOINTS,
+  fetchJson: async <T,>(url: string, init?: RequestInit) => {
+    const res = await fetch(url, init);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`);
+    return (await res.json()) as T;
+  },
+  fetchText: async (url: string, init?: RequestInit) => {
+    const res = await fetch(url, init);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`);
+    return res.text();
+  },
+};
+
 export function useApiConfig(): ApiConfigValue {
   const ctx = useContext(ApiConfigContext);
-  if (ctx) return ctx;
-  // Default: no provider → preview Vite endpoints, unauthenticated fetch.
-  return {
-    endpoints: DEFAULT_ENDPOINTS,
-    fetchJson: async <T,>(url: string, init?: RequestInit) => {
-      const res = await fetch(url, init);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`);
-      return (await res.json()) as T;
-    },
-    fetchText: async (url: string, init?: RequestInit) => {
-      const res = await fetch(url, init);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`);
-      return res.text();
-    },
-  };
+  return ctx ?? DEFAULT_API;
 }

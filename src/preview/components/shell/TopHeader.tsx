@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button.js';
-import { Code2, Download, FileJson, Wand2 } from 'lucide-react';
+import { Code2, Download, FileJson, Wand2, Moon, Sun } from 'lucide-react';
 import { useToolStore } from '@/state/useToolStore.js';
+import { useTheme } from '@/state/useTheme.js';
 
 export type ExportFormat = 'mermaid' | 'sql' | 'dbml' | 'svg' | 'png';
 
@@ -22,10 +23,14 @@ const EXPORT_OPTIONS: { id: ExportFormat; label: string; hint: string }[] = [
 
 export function TopHeader({ fileName, badge, onAutoLayout, onExport }: TopHeaderProps) {
   const { codePanelOpen, toggleCodePanel } = useToolStore();
+  const { resolved, toggle } = useTheme();
   const [exportOpen, setExportOpen] = useState(false);
 
   return (
-    <header className="flex items-center justify-between h-12 px-3 border-b bg-background/60 backdrop-blur">
+    <header
+      className="flex items-center justify-between h-12 px-3 border-b bg-background/60 backdrop-blur"
+      role="banner"
+    >
       <div className="flex items-center gap-2 min-w-0">
         <div className="flex items-center justify-center w-7 h-7 rounded bg-primary text-primary-foreground font-mono text-sm font-bold shrink-0">
           v
@@ -59,9 +64,21 @@ export function TopHeader({ fileName, badge, onAutoLayout, onExport }: TopHeader
           onClick={toggleCodePanel}
           className="h-8 gap-1.5 font-mono"
           title="Toggle Code Panel (Cmd+/)"
+          aria-pressed={codePanelOpen}
         >
           <Code2 className="h-3.5 w-3.5" />
           Code
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={toggle}
+          className="h-8 w-8 p-0"
+          title={resolved === 'dark' ? 'Zu Light Mode wechseln' : 'Zu Dark Mode wechseln'}
+          aria-label={resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          data-compact
+        >
+          {resolved === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </Button>
         <div className="relative">
           <Button

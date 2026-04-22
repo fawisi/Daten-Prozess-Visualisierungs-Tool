@@ -628,8 +628,12 @@ function EditorShell({
       )}
       <div className="flex flex-1 min-h-0">
         <ToolPalette diagramType={diagramType} />
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 min-h-0 relative">
+        <main className="flex-1 flex flex-col min-w-0" role="main" aria-label="Diagram canvas">
+          <div
+            className="flex-1 min-h-0 relative"
+            role="list"
+            aria-label={diagramType === 'bpmn' ? 'BPMN process nodes' : diagramType === 'erd' ? 'ERD tables' : 'Empty canvas'}
+          >
             {diagramType === 'bpmn' ? (
               <BpmnCanvas canvasRef={canvasRef} onSelect={setSelectedNode} onPaneClick={bpmnPaneClick} />
             ) : diagramType === 'erd' ? (
@@ -647,7 +651,7 @@ function EditorShell({
               validate={canvasRef.current.validateSource}
             />
           )}
-        </div>
+        </main>
         <PropertiesPanel
           diagramMeta={{
             name: fileName ?? undefined,

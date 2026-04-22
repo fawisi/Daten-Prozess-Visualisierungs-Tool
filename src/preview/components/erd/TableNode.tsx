@@ -33,11 +33,18 @@ const ColumnRow = memo(({ column }: { column: Column }) => (
 
 ColumnRow.displayName = 'ColumnRow';
 
-function TableNodeComponent({ data, selected }: NodeProps & { data: TableNodeData }) {
+function TableNodeComponent({ id, data, selected }: NodeProps & { data: TableNodeData }) {
   const { label, columns, isNew } = data;
+  const pkCount = columns.filter((c) => c.primary).length;
+  const ariaLabel = `ERD table ${label || id} with ${columns.length} column${columns.length === 1 ? '' : 's'}, ${pkCount} primary key${pkCount === 1 ? '' : 's'}`;
 
   return (
-    <div className={`table-node${selected ? ' selected' : ''}${isNew ? ' table-node--entering' : ''}`}>
+    <div
+      className={`table-node${selected ? ' selected' : ''}${isNew ? ' table-node--entering' : ''}`}
+      role="listitem"
+      aria-label={ariaLabel}
+      tabIndex={0}
+    >
       <div className="table-node__header">
         <span className="table-node__icon"><TableIcon /></span>
         <span className="table-node__name">{label}</span>

@@ -7,12 +7,21 @@ interface TaskNodeData {
 }
 
 export const TaskNode = memo(function TaskNode({
+  id,
   data,
 }: {
+  id: string;
   data: TaskNodeData;
 }) {
+  const ariaLabel = [
+    `BPMN task`,
+    data.label || id,
+    data.description ? `— ${data.description}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
-    <div className="bpmn-node">
+    <div className="bpmn-node" role="listitem" aria-label={ariaLabel} tabIndex={0}>
       <div className="bpmn-task">
         <div className="bpmn-task__label">{data.label}</div>
         {data.description && (

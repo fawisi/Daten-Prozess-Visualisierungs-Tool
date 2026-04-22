@@ -2,6 +2,7 @@ import React from 'react';
 import { TooltipProvider } from './components/ui/tooltip.js';
 import { ToolStoreProvider, type SelectedNode } from './state/useToolStore.js';
 import { ApiConfigProvider } from './state/ApiConfig.js';
+import { ThemeProvider } from './state/useTheme.js';
 import { EditorShell } from './App.js';
 
 export interface VisoEditorProps {
@@ -45,6 +46,12 @@ export interface VisoEditorProps {
   onSelectionChange?: (node: SelectedNode | null) => void;
   /** Extra className for the root wrapper; use to constrain height in Next.js pages. */
   className?: string;
+  /**
+   * When false, VisoEditor does NOT install its own ThemeProvider. Use
+   * this if the hosting app already manages the `.dark` class on
+   * `<html>`; otherwise the two providers will fight over the class.
+   */
+  manageTheme?: boolean;
 }
 
 /**
@@ -72,8 +79,9 @@ export function VisoEditor({
   initialDiagramType,
   onSelectionChange,
   className,
+  manageTheme = true,
 }: VisoEditorProps) {
-  return (
+  const shell = (
     <ApiConfigProvider
       apiBaseUrl={apiBaseUrl}
       workspaceId={workspaceId}
@@ -94,4 +102,5 @@ export function VisoEditor({
       </TooltipProvider>
     </ApiConfigProvider>
   );
+  return manageTheme ? <ThemeProvider>{shell}</ThemeProvider> : shell;
 }
