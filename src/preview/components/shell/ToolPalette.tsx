@@ -12,6 +12,13 @@ interface ToolDef {
   icon: React.ComponentType<{ className?: string }>;
   group: 'cursor' | 'shape';
   diagramType?: 'bpmn' | 'erd';
+  /**
+   * When set, the tool is hidden in `simple` process mode. Today all
+   * BPMN v1.0 elements are simple-mode-safe, but once inclusive / parallel
+   * gateways + timer events land this flag scopes them to `bpmn`-mode
+   * only (plan P1 Deliverable-2).
+   */
+  bpmnOnly?: boolean;
 }
 
 const TOOLS: ToolDef[] = [
@@ -28,12 +35,18 @@ interface ToolPaletteProps {
 }
 
 export function ToolPalette({ diagramType }: ToolPaletteProps) {
-  const { activeTool, setActiveTool } = useToolStore();
+  const { activeTool, setActiveTool, processMode } = useToolStore();
   const { t } = useI18n();
 
-  const visibleTools = TOOLS.filter(
-    (tool) => !tool.diagramType || tool.diagramType === diagramType
-  );
+  const visibleTools = TOOLS.filter((tool) => {
+    if (tool.diagramType && tool.diagramType !== diagramType) return false;
+    // In simple mode, BPMN-only tools disappear from the palette — the
+    // nodes themselves stay in the schema (nondestructive downgrade),
+    // they just can't be freshly placed until the user switches back to
+    // full BPMN mode (plan P1 Deliverable-2).
+    if (tool.bpmnOnly && processMode === 'simple') return false;
+    return true;
+  });
 
   const cursorTools = visibleTools.filter((tool) => tool.group === 'cursor');
   const shapeTools = visibleTools.filter((tool) => tool.group === 'shape');

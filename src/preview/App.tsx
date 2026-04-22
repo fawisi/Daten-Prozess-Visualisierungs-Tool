@@ -28,7 +28,12 @@ import { useDiagramSync } from '@/hooks/useDiagramSync.js';
 import { useProcessSync } from '@/hooks/useProcessSync.js';
 import { useHistory, useHistoryShortcuts } from '@/hooks/useHistory.js';
 import { useSpawnListener } from '@/hooks/usePaletteDrag.js';
-import { ToolStoreProvider, useToolStore, type SelectedNode } from '@/state/useToolStore.js';
+import {
+  ToolStoreProvider,
+  useToolStore,
+  type SelectedNode,
+  type ProcessMode,
+} from '@/state/useToolStore.js';
 import { useApiConfig } from '@/state/ApiConfig.js';
 import { I18nProvider, useI18n } from '@/i18n/useI18n.js';
 import { useTheme } from '@/state/useTheme.js';
@@ -313,9 +318,18 @@ function EditorShell({
   const [openTabs, setOpenTabs] = useState<DiagramFile[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [sourceText, setSourceText] = useState<string>('');
+  const [hiddenElementsCount, setHiddenElementsCount] = useState(0);
   const canvasRef = useRef<CanvasHandles | null>(null);
-  const { activeTool, setActiveTool, selectedNode, setSelectedNode, codePanelOpen, setCommandPaletteOpen, toggleCodePanel } =
-    useToolStore();
+  const {
+    activeTool,
+    setActiveTool,
+    selectedNode,
+    setSelectedNode,
+    codePanelOpen,
+    setCommandPaletteOpen,
+    toggleCodePanel,
+    setProcessMode,
+  } = useToolStore();
   const history = useHistory<Record<string, { x: number; y: number }>>();
 
   useEffect(() => {
@@ -352,8 +366,66 @@ function EditorShell({
       .catch(console.error);
   }, [api, initialDiagramType]);
 
-  const activeFile = openTabs.find((t) => t.path === activeTab) ?? null;
+  const activeFile = openTabs.find((tab) => tab.path === activeTab) ?? null;
   const diagramType = activeFile?.type ?? null;
+
+  // Load process mode sidecar whenever the active BPMN file changes.
+  // Defaults + heuristic are computed server-side so Vite + hub paths
+  // share one source of truth.
+  useEffect(() => {
+    if (!activeFile || activeFile.type !== 'bpmn') return;
+    const modeUrl = api.endpoints.bpmnMode;
+    const hiddenUrl = api.endpoints.bpmnHiddenElements;
+    if (!modeUrl) return;
+    const authHeader = api.endpoints.authHeader;
+    const init = authHeader ? { headers: { Authorization: authHeader } } : undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(modeUrl, init);
+        if (!res.ok) return;
+        const body = (await res.json()) as { mode?: ProcessMode };
+        if (!cancelled && (body.mode === 'simple' || body.mode === 'bpmn')) {
+          setProcessMode(body.mode);
+        }
+      } catch {
+        /* leave the default; heuristic already ran server-side */
+      }
+      if (!hiddenUrl) return;
+      try {
+        const hiddenRes = await fetch(hiddenUrl, init);
+        if (!hiddenRes.ok) return;
+        const body = (await hiddenRes.json()) as { hiddenIds?: string[] };
+        if (!cancelled) {
+          setHiddenElementsCount(body.hiddenIds?.length ?? 0);
+        }
+      } catch {
+        /* non-blocking */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFile, api, setProcessMode]);
+
+  const handleModeChange = useCallback(
+    async (mode: ProcessMode) => {
+      const modeUrl = api.endpoints.bpmnMode;
+      if (!modeUrl) return;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (api.endpoints.authHeader) headers.Authorization = api.endpoints.authHeader;
+      try {
+        await fetch(modeUrl, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ mode }),
+        });
+      } catch (err) {
+        console.error('Failed to persist process mode:', err);
+      }
+    },
+    [api]
+  );
 
   // Load source when CodePanel opens or active file changes
   useEffect(() => {
@@ -716,6 +788,9 @@ function EditorShell({
         badge={files.length > 0 ? 'HYBRID' : undefined}
         onAutoLayout={handleAutoLayout}
         onExport={handleExport}
+        showModeToggle={diagramType === 'bpmn'}
+        onModeChange={handleModeChange}
+        hiddenElementsCount={hiddenElementsCount}
       />
       {openTabs.length > 1 && (
         <DiagramTabs

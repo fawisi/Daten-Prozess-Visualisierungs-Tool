@@ -50,6 +50,10 @@ export interface Dict {
     language_switch: string;
     theme_switch_light: string;
     theme_switch_dark: string;
+    mode_simple: string;
+    mode_bpmn: string;
+    mode_toggle_aria: string;
+    mode_hidden_hint: (args: { count: number }) => string;
   };
   export: {
     mermaid: string;
@@ -122,6 +126,11 @@ export const de: Dict = {
     language_switch: 'Sprache',
     theme_switch_light: 'Zu Light Mode wechseln',
     theme_switch_dark: 'Zu Dark Mode wechseln',
+    mode_simple: 'Einfach',
+    mode_bpmn: 'BPMN-Profi',
+    mode_toggle_aria: 'Prozess-Modus umschalten',
+    mode_hidden_hint: ({ count }) =>
+      `${count} ${count === 1 ? 'versteckt' : 'versteckte'} BPMN-Element${count === 1 ? '' : 'e'}`,
   },
   export: {
     mermaid: 'Mermaid',

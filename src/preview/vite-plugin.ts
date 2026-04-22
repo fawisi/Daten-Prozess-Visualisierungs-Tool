@@ -3,6 +3,9 @@ import { watch } from 'chokidar';
 import { WebSocketServer, WebSocket } from 'ws';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { loadModeSidecar, saveModeSidecar } from '../mode-sidecar.js';
+import { ProcessSchema } from '../bpmn/schema.js';
+import { inferProcessMode, bpmnOnlyNodeIds } from '../bpmn/mode-heuristic.js';
 
 interface VisoPluginOptions {
   erdFile: string;
@@ -125,6 +128,70 @@ export function visoPlugin(
           }
         }
 
+        // === BPMN Mode sidecar (P1 two-mode prozess) ===
+        if (req.url === '/__viso-api/bpmn/mode') {
+          if (req.method === 'GET') {
+            try {
+              const sidecar = await loadModeSidecar(bpmnSchemaPath);
+              if (sidecar?.kind === 'bpmn') {
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ ok: true, mode: sidecar.mode, source: 'sidecar' }));
+                return;
+              }
+              // Heuristic-fallback for v1.0 files that never had a sidecar.
+              const raw = await readFile(bpmnSchemaPath, 'utf-8').catch(() => '{}');
+              const parsed = ProcessSchema.safeParse(JSON.parse(raw || '{}'));
+              const mode = parsed.success ? inferProcessMode(parsed.data) : 'simple';
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true, mode, source: 'heuristic' }));
+              return;
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+              return;
+            }
+          }
+          if (req.method === 'PUT') {
+            try {
+              const body = await readJsonBody(req);
+              const mode = (body as { mode?: string }).mode;
+              if (mode !== 'simple' && mode !== 'bpmn') {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ ok: false, error: 'Expected mode: simple | bpmn' }));
+                return;
+              }
+              await saveModeSidecar(bpmnSchemaPath, {
+                kind: 'bpmn',
+                mode,
+                version: '1.1',
+              });
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true, mode }));
+              return;
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+              return;
+            }
+          }
+        }
+
+        // Hidden-element IDs (for the "N BPMN-only elements are hidden" pill).
+        if (req.url === '/__viso-api/bpmn/hidden-elements' && req.method === 'GET') {
+          try {
+            const raw = await readFile(bpmnSchemaPath, 'utf-8').catch(() => '{}');
+            const parsed = ProcessSchema.safeParse(JSON.parse(raw || '{}'));
+            const hiddenIds = parsed.success ? bpmnOnlyNodeIds(parsed.data) : [];
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ ok: true, hiddenIds }));
+            return;
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+            return;
+          }
+        }
+
         // === Files listing ===
         if (req.url === '/__viso-api/files' && req.method === 'GET') {
           const files = [];
@@ -191,6 +258,23 @@ function writeJsonBody(
       res.statusCode = 400;
       res.end('Invalid JSON');
     }
+  });
+}
+
+function readJsonBody(req: import('http').IncomingMessage): Promise<unknown> {
+  return new Promise((resolvePromise, reject) => {
+    let body = '';
+    req.on('data', (chunk: Buffer) => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        resolvePromise(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('error', reject);
   });
 }
 

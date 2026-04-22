@@ -4,6 +4,9 @@ export type Tool = 'pointer' | 'pan' | 'start-event' | 'end-event' | 'task' | 'g
 
 export type DiagramType = 'erd' | 'bpmn';
 
+/** BPMN process mode — plan P1 two-mode-prozess (`simple` vs full `bpmn`). */
+export type ProcessMode = 'simple' | 'bpmn';
+
 export interface SelectedNode {
   id: string;
   type: string;
@@ -22,6 +25,8 @@ interface ToolStoreValue {
   commandPaletteOpen: boolean;
   toggleCommandPalette: () => void;
   setCommandPaletteOpen: (open: boolean) => void;
+  processMode: ProcessMode;
+  setProcessMode: (mode: ProcessMode) => void;
 }
 
 const ToolStoreContext = createContext<ToolStoreValue | null>(null);
@@ -40,6 +45,10 @@ export function ToolStoreProvider({ children }: { children: React.ReactNode }) {
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [codePanelOpen, setCodePanelOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  // Default to 'simple' — the canvas will replace this once the
+  // /bpmn/mode sidecar is loaded (or the heuristic falls back for v1.0
+  // files with BPMN-only elements).
+  const [processMode, setProcessMode] = useState<ProcessMode>('simple');
 
   const toggleCodePanel = useCallback(() => setCodePanelOpen((v) => !v), []);
   const toggleCommandPalette = useCallback(() => setCommandPaletteOpen((v) => !v), []);
@@ -106,8 +115,18 @@ export function ToolStoreProvider({ children }: { children: React.ReactNode }) {
       commandPaletteOpen,
       toggleCommandPalette,
       setCommandPaletteOpen,
+      processMode,
+      setProcessMode,
     }),
-    [activeTool, selectedNode, codePanelOpen, commandPaletteOpen, toggleCodePanel, toggleCommandPalette]
+    [
+      activeTool,
+      selectedNode,
+      codePanelOpen,
+      commandPaletteOpen,
+      toggleCodePanel,
+      toggleCommandPalette,
+      processMode,
+    ]
   );
 
   return <ToolStoreContext.Provider value={value}>{children}</ToolStoreContext.Provider>;

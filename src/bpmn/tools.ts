@@ -11,6 +11,7 @@ import {
 import { processToMermaid } from './export-mermaid.js';
 import { derivePositionsPath, prunePositions } from '../positions.js';
 import { loadModeSidecar, saveModeSidecar } from '../mode-sidecar.js';
+import { inferProcessMode } from './mode-heuristic.js';
 import type { Process } from './schema.js';
 
 function processSummary(p: Process): string {
@@ -211,7 +212,8 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
   server.registerTool(
     'process_get_schema',
     {
-      description: 'Read the current process diagram schema as JSON',
+      description:
+        'Read the current process diagram schema as JSON. The response includes a `metadata.mode` field (`simple` | `bpmn`) derived from the sidecar, or the v1.0 heuristic when the sidecar is missing.',
       inputSchema: z.object({}),
       annotations: {
         readOnlyHint: true,
@@ -219,7 +221,14 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
     },
     async () => {
       const process = await store.load();
-      return textResult(JSON.stringify(process, null, 2));
+      const sidecar = await loadModeSidecar(store.filePath);
+      const mode =
+        sidecar?.kind === 'bpmn' ? sidecar.mode : inferProcessMode(process);
+      // `metadata` is a response-only field; Zod strips it on inbound
+      // parse (see schema.ts) so the file on disk stays the same shape.
+      return textResult(
+        JSON.stringify({ ...process, metadata: { mode } }, null, 2)
+      );
     }
   );
 

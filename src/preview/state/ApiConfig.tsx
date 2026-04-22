@@ -9,6 +9,10 @@ export interface ApiEndpoints {
   bpmnPositions: string;
   bpmnSource: string;
   bpmnPut: string | null;
+  /** Mode sidecar GET|PUT (simple|bpmn) — P1 two-mode prozess. */
+  bpmnMode: string | null;
+  /** List of IDs the canvas should hide in simple mode. */
+  bpmnHiddenElements: string | null;
   filesList: string | null;
   /** WebSocket URL for live reloads; null disables the live connection. */
   wsUrl: string | null;
@@ -31,6 +35,8 @@ const DEFAULT_ENDPOINTS: ApiEndpoints = {
   bpmnPositions: '/__viso-api/bpmn/positions',
   bpmnSource: '/__viso-api/bpmn/source',
   bpmnPut: null,
+  bpmnMode: null, // Vite plugin does not surface mode endpoints today; hub does.
+  bpmnHiddenElements: null,
   filesList: '/__viso-api/files',
   wsUrl: null, // vite-plugin resolves same-origin /__viso-ws; preview App.tsx handles explicitly
 };
@@ -83,6 +89,8 @@ export function ApiConfigProvider({
       bpmnPositions: defaults.bpmnPositions,
       bpmnSource: defaults.bpmnSource,
       bpmnPut: `${hubBase}/bpmn`,
+      bpmnMode: `${hubBase}/bpmn/mode`,
+      bpmnHiddenElements: `${hubBase}/bpmn/hidden-elements`,
       filesList: null,
       wsUrl: `${hubBase}/events`,
       // Spread consumer overrides BEFORE the auth header so a partial

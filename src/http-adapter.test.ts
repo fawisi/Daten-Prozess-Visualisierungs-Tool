@@ -498,3 +498,72 @@ describe('HTTP adapter — body limits', () => {
     }
   });
 });
+
+describe('HTTP adapter — BPMN mode sidecar', () => {
+  it('GET /bpmn/mode falls back to heuristic when no sidecar exists', async () => {
+    const app = await buildApp();
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/workspace/ws1/bpmn/mode',
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { mode: string; source: string };
+      // v1.0 seed file has only simple-mode elements → heuristic = 'simple'.
+      expect(body).toEqual({ ok: true, mode: 'simple', source: 'heuristic' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('PUT /bpmn/mode persists the sidecar', async () => {
+    const app = await buildApp();
+    try {
+      const put = await app.inject({
+        method: 'PUT',
+        url: '/api/workspace/ws1/bpmn/mode',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ mode: 'bpmn' }),
+      });
+      expect(put.statusCode).toBe(200);
+      const get = await app.inject({
+        method: 'GET',
+        url: '/api/workspace/ws1/bpmn/mode',
+      });
+      const body = get.json() as { mode: string; source: string };
+      expect(body).toEqual({ ok: true, mode: 'bpmn', source: 'sidecar' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('PUT /bpmn/mode rejects an invalid mode value', async () => {
+    const app = await buildApp();
+    try {
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/workspace/ws1/bpmn/mode',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ mode: 'foo' }),
+      });
+      expect(res.statusCode).toBe(400);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('GET /bpmn/hidden-elements returns an empty list for a v1.0 file', async () => {
+    const app = await buildApp();
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/workspace/ws1/bpmn/hidden-elements',
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { hiddenIds: string[] };
+      expect(body).toEqual({ ok: true, hiddenIds: [] });
+    } finally {
+      await app.close();
+    }
+  });
+});
