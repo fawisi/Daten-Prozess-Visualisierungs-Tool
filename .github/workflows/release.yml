@@ -1,0 +1,84 @@
+name: Release
+
+# Triggers on version tags (v1.2.3, v1.2.3-rc.1, etc.) or manual dispatch.
+# Tag-first so the version bump commit on main and the npm publish are a
+# reviewable unit: cut a tag, workflow validates the exact commit tree,
+# publishes if every gate passes.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+# Trusted Publishing uses OIDC to authenticate against npm — no NPM_TOKEN
+# secret is stored in the repo. `id-token: write` grants the runner a
+# short-lived token npm exchanges for publish rights, `contents: read`
+# is the minimum needed to checkout the tagged commit.
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm (Trusted Publishing)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies (lockfile-frozen)
+        run: npm ci
+
+      # Full release gate: build, 207 tests, publint, attw, size-limit.
+      # Matches what CI runs on PRs so a green main ≈ a publishable tag.
+      - name: Release gate (check:release)
+        run: npm run check:release
+
+      # Sanity check: the tag name must match the package.json version so
+      # v1.1.0 can't accidentally publish 1.2.0. Strips the leading v.
+      - name: Verify tag matches package.json version
+        if: github.event_name == 'push'
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME (-> $TAG_VERSION) does not match package.json $PKG_VERSION" >&2
+            exit 1
+          fi
+
+      # server.json drives MCP Registry submission; its version fields must
+      # match package.json or the registry entry points at a missing npm tag.
+      - name: Verify server.json version matches package.json
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          SRV_TOP="$(node -p "require('./server.json').version_detail.version")"
+          SRV_PKG="$(node -p "require('./server.json').packages[0].version")"
+          if [ "$PKG_VERSION" != "$SRV_TOP" ] || [ "$PKG_VERSION" != "$SRV_PKG" ]; then
+            echo "server.json versions ($SRV_TOP / $SRV_PKG) drift from package.json $PKG_VERSION" >&2
+            exit 1
+          fi
+
+      # Smoke test the tarball before pushing. Catches missing files-field
+      # entries, dist/ misses, or bin-script shebang regressions.
+      - name: npm pack smoke test
+        run: npm pack --dry-run
+
+      # Under Trusted Publishing (npm >= 11.5) the runner authenticates via
+      # OIDC; provenance attestations are attached automatically. No --token,
+      # no --provenance flag needed — npm detects the id-token and does both.
+      - name: Publish to npm
+        run: npm publish --access public

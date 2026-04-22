@@ -70,8 +70,34 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
-    "preview": "vite --config vite.config.ts"
+    "preview": "vite --config vite.config.ts",
+    "size": "size-limit",
+    "check:package": "publint",
+    "check:types": "attw --pack . --ignore-rules cjs-resolves-to-esm no-resolution",
+    "check:release": "npm run build && npm test && npm run check:package && npm run check:types && npm run size"
   },
+  "size-limit": [
+    {
+      "name": "cli (CJS, brotli)",
+      "path": "dist/cli.cjs",
+      "limit": "60 kB"
+    },
+    {
+      "name": "server (CJS, brotli)",
+      "path": "dist/server.cjs",
+      "limit": "40 kB"
+    },
+    {
+      "name": "http-adapter (CJS, brotli)",
+      "path": "dist/http-adapter.cjs",
+      "limit": "35 kB"
+    },
+    {
+      "name": "preview (ESM, brotli)",
+      "path": "dist/preview.js",
+      "limit": "650 kB"
+    }
+  ],
   "keywords": [
     "mcp",
     "agent-native",
@@ -130,6 +156,8 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@size-limit/file": "^12.1.0",
     "@types/node": "^20.0.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -139,8 +167,10 @@
     "chokidar": "^4.0.0",
     "elkjs": "^0.9.0",
     "fast-check": "^4.7.0",
+    "publint": "^0.3.18",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "size-limit": "^12.1.0",
     "tsup": "^8.0.0",
     "typescript": "^5.5.0",
     "vite": "^6.0.0",
