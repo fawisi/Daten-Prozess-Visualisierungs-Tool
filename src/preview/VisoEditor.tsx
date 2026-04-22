@@ -6,14 +6,6 @@ import { ThemeProvider } from './state/useTheme.js';
 import { EditorShell } from './App.js';
 
 export interface VisoEditorProps {
-  /**
-   * Path or URL to a BPMN `.bpmn.json` file. When consuming the HTTP
-   * adapter, the path is resolved server-side via the workspace resolver;
-   * the prop is advisory for UI labels.
-   */
-  bpmnFile?: string;
-  /** Path or URL to a DBML / ERD file. Same resolution as {@link bpmnFile}. */
-  dbmlFile?: string;
   /** Force read-only mode: no mutations, no auto-save, PropertiesPanel disabled. */
   readOnly?: boolean;
   /** Hub workspace id — appended to {@link apiBaseUrl}/workspace/:id/... */

@@ -542,6 +542,20 @@ function EditorShell({
       }
       if (!doc.nodes) doc.nodes = {};
       if (!doc.flows) doc.flows = [];
+      // Enforce the same "max 1 start-event" invariant as `process_add_node`
+      // so the UI and MCP agents never diverge on what a valid BPMN looks like.
+      if (type === 'start-event') {
+        const existing = Object.entries(doc.nodes).find(
+          ([, n]) => (n as { type?: string }).type === 'start-event'
+        );
+        if (existing) {
+          window.alert(
+            `Der Prozess hat bereits ein Start-Event ("${existing[0]}"). Es darf nur eines geben.`
+          );
+          setActiveTool('pointer');
+          return;
+        }
+      }
       const baseId = typePrefix(type);
       let suffix = 1;
       let id = `${baseId}_${suffix}`;
@@ -668,17 +682,6 @@ function EditorShell({
       <CommandPalette diagramType={diagramType} actions={actions} />
     </div>
   );
-}
-
-function bpmnExportBase(bpmnPut: string | null): string {
-  // Hub mode PUT url is `…/workspace/:id/bpmn`; export endpoint is sibling.
-  if (!bpmnPut) return '';
-  return `${bpmnPut}/export`;
-}
-
-function erdExportBase(erdPut: string | null): string {
-  if (!erdPut) return '';
-  return `${erdPut}/export`;
 }
 
 function typePrefix(type: 'start-event' | 'end-event' | 'task' | 'gateway'): string {
