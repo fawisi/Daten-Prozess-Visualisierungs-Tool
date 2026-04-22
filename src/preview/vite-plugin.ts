@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { loadModeSidecar, saveModeSidecar } from '../mode-sidecar.js';
 import { ProcessSchema } from '../bpmn/schema.js';
 import { inferProcessMode, bpmnOnlyNodeIds } from '../bpmn/mode-heuristic.js';
+import { z } from 'zod';
 
 interface VisoPluginOptions {
   erdFile: string;
@@ -154,19 +155,24 @@ export function visoPlugin(
           if (req.method === 'PUT') {
             try {
               const body = await readJsonBody(req);
-              const mode = (body as { mode?: string }).mode;
-              if (mode !== 'simple' && mode !== 'bpmn') {
+              // Zod-narrow the body rather than trusting a string union
+              // cast (kieran-review P1 N2). Rejects anything that isn't
+              // exactly { mode: 'simple' | 'bpmn' }.
+              const parsed = z
+                .object({ mode: z.enum(['simple', 'bpmn']) })
+                .safeParse(body);
+              if (!parsed.success) {
                 res.statusCode = 400;
                 res.end(JSON.stringify({ ok: false, error: 'Expected mode: simple | bpmn' }));
                 return;
               }
               await saveModeSidecar(bpmnSchemaPath, {
                 kind: 'bpmn',
-                mode,
+                mode: parsed.data.mode,
                 version: '1.1',
               });
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ ok: true, mode }));
+              res.end(JSON.stringify({ ok: true, mode: parsed.data.mode }));
               return;
             } catch (err) {
               res.statusCode = 500;

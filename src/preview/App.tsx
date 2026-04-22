@@ -371,13 +371,15 @@ function EditorShell({
 
   // Load process mode sidecar whenever the active BPMN file changes.
   // Defaults + heuristic are computed server-side so Vite + hub paths
-  // share one source of truth.
+  // share one source of truth. Dependencies are narrowed to the
+  // specific URLs + auth header so unrelated ApiConfig re-renders don't
+  // re-fire the fetch (kieran-review N5).
+  const modeUrl = api.endpoints.bpmnMode;
+  const hiddenUrl = api.endpoints.bpmnHiddenElements;
+  const authHeader = api.endpoints.authHeader;
   useEffect(() => {
     if (!activeFile || activeFile.type !== 'bpmn') return;
-    const modeUrl = api.endpoints.bpmnMode;
-    const hiddenUrl = api.endpoints.bpmnHiddenElements;
     if (!modeUrl) return;
-    const authHeader = api.endpoints.authHeader;
     const init = authHeader ? { headers: { Authorization: authHeader } } : undefined;
     let cancelled = false;
     (async () => {
@@ -406,25 +408,29 @@ function EditorShell({
     return () => {
       cancelled = true;
     };
-  }, [activeFile, api, setProcessMode]);
+  }, [activeFile, modeUrl, hiddenUrl, authHeader, setProcessMode]);
 
   const handleModeChange = useCallback(
-    async (mode: ProcessMode) => {
+    async (mode: ProcessMode): Promise<boolean> => {
       const modeUrl = api.endpoints.bpmnMode;
-      if (!modeUrl) return;
+      if (!modeUrl) return false;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (api.endpoints.authHeader) headers.Authorization = api.endpoints.authHeader;
       try {
-        await fetch(modeUrl, {
+        const res = await fetch(modeUrl, {
           method: 'PUT',
           headers,
           body: JSON.stringify({ mode }),
         });
+        // Callers rely on the boolean so TopHeader can revert its
+        // optimistic state when the sidecar write fails (kieran B2).
+        return res.ok;
       } catch (err) {
         console.error('Failed to persist process mode:', err);
+        return false;
       }
     },
-    [api]
+    [api.endpoints.bpmnMode, api.endpoints.authHeader]
   );
 
   // Load source when CodePanel opens or active file changes

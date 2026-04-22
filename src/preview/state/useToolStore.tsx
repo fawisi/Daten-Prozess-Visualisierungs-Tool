@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import type { ProcessMode } from '../../bpmn/mode-heuristic.js';
 
 export type Tool = 'pointer' | 'pan' | 'start-event' | 'end-event' | 'task' | 'gateway';
 
 export type DiagramType = 'erd' | 'bpmn';
 
-/** BPMN process mode — plan P1 two-mode-prozess (`simple` vs full `bpmn`). */
-export type ProcessMode = 'simple' | 'bpmn';
+// Re-export so call sites can import from one place; the type itself
+// is declared alongside the heuristic that produces it (kieran N4).
+export type { ProcessMode };
 
 export interface SelectedNode {
   id: string;

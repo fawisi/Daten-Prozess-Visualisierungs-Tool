@@ -13,6 +13,11 @@ import { DiagramSchema } from './schema.js';
 import { ProcessSchema } from './bpmn/schema.js';
 import { loadModeSidecar, saveModeSidecar } from './mode-sidecar.js';
 import { inferProcessMode, bpmnOnlyNodeIds } from './bpmn/mode-heuristic.js';
+import { z } from 'zod';
+
+const ModeRequestSchema = z.object({
+  mode: z.enum(['simple', 'bpmn']),
+});
 import { toMermaid } from './export/mermaid.js';
 import { processToMermaid } from './bpmn/export-mermaid.js';
 import { derivePositionsPath, prunePositions } from './positions.js';
@@ -254,8 +259,11 @@ async function registerBpmnRoutes(app: FastifyInstance, resolver: WorkspaceResol
 
   app.put('/api/workspace/:workspaceId/bpmn/mode', async (req, reply) => {
     const { workspaceId } = req.params as { workspaceId: string };
-    const body = req.body as { mode?: string };
-    if (body?.mode !== 'simple' && body?.mode !== 'bpmn') {
+    // Parse-first-then-act: never trust the wire. Zod-narrowing beats
+    // the ad-hoc `as { mode?: string }` cast that would let an invalid
+    // string sneak through (kieran-review P1 N2).
+    const parsed = ModeRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
       problem(reply, 400, {
         type: `${PROBLEM_BASE}/bpmn-mode-invalid`,
         title: 'Invalid mode',
@@ -266,10 +274,10 @@ async function registerBpmnRoutes(app: FastifyInstance, resolver: WorkspaceResol
     const { bpmnPath } = await resolver(workspaceId);
     await saveModeSidecar(bpmnPath, {
       kind: 'bpmn',
-      mode: body.mode,
+      mode: parsed.data.mode,
       version: '1.1',
     });
-    return { ok: true, mode: body.mode };
+    return { ok: true, mode: parsed.data.mode };
   });
 
   // Hidden-element count — used by the PropertiesPanel to surface

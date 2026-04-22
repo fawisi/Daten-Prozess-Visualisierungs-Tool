@@ -15,7 +15,13 @@ interface TopHeaderProps {
   onExport: (format: ExportFormat) => void;
   /** When set, renders the process-mode toggle (BPMN-only). Hidden for ERD files. */
   showModeToggle?: boolean;
-  onModeChange?: (mode: ProcessMode) => void;
+  /**
+   * Called with the new mode. Must return a Promise resolving to `true`
+   * on successful persistence — the toggle will revert its optimistic
+   * UI state to the previous mode on `false` so the UI never drifts
+   * from disk (kieran-review P1 B2).
+   */
+  onModeChange?: (mode: ProcessMode) => Promise<boolean> | void;
   hiddenElementsCount?: number;
 }
 
@@ -41,9 +47,14 @@ export function TopHeader({
   const { t } = useI18n();
   const [exportOpen, setExportOpen] = useState(false);
 
-  function handleModeChange(next: ProcessMode) {
-    setProcessMode(next);
-    onModeChange?.(next);
+  async function handleModeChange(next: ProcessMode) {
+    const previous = processMode;
+    setProcessMode(next); // optimistic — snaps back below on PUT failure
+    const result = onModeChange?.(next);
+    if (result instanceof Promise) {
+      const ok = await result;
+      if (!ok) setProcessMode(previous);
+    }
   }
 
   return (
