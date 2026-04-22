@@ -85,7 +85,15 @@ export function processToMermaid(process: Process, options: MermaidExportOptions
     (s) => byStatus[s].length > 0
   );
   if (usedStatuses.length > 0) {
-    lines.push(...statusClassDefs());
+    // Emit only the classDefs that are actually used so the output stays
+    // compact and the Mermaid renderer doesn't warn about unused classes.
+    const allDefs = statusClassDefs();
+    const wantedClasses = new Set(usedStatuses.map((s) => statusClassName(s)));
+    for (const def of allDefs) {
+      if ([...wantedClasses].some((cls) => def.includes(` ${cls} `))) {
+        lines.push(def);
+      }
+    }
     for (const s of usedStatuses) {
       lines.push(`    class ${byStatus[s].join(',')} ${statusClassName(s)}`);
     }

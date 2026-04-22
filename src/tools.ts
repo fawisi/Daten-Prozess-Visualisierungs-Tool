@@ -3,11 +3,24 @@ import { writeFile, rename } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { SafeIdentifier, ColumnType, RelationType, DiagramSchema } from './schema.js';
+import {
+  SafeIdentifier,
+  ColumnType,
+  RelationType,
+  DiagramSchema,
+  NodeStatus,
+} from './schema.js';
 import { toMermaid } from './export/mermaid.js';
 import { DbmlStore, diagramToDbml, rawDatabaseToDiagram } from './dbml-store.js';
 import { Parser, exporter } from '@dbml/core';
 import { derivePositionsPath, prunePositions } from './positions.js';
+import {
+  applyStatusSidecar,
+  loadErdStatusSidecar,
+  pruneErdStatusSidecar,
+  updateColumnStatus,
+  updateTableStatus,
+} from './erd-status-sidecar.js';
 import type { Diagram, Column } from './schema.js';
 import type { ErdStore } from './erd-store-interface.js';
 
@@ -314,7 +327,8 @@ export function registerTools(server: McpServer, store: ErdStore) {
   server.registerTool(
     'diagram_get_schema',
     {
-      description: 'Read the current ER diagram schema as compact JSON',
+      description:
+        'Read the current ER diagram schema as compact JSON. Hydrates status fields from the .erd.status.json sidecar (DBML has no native status support).',
       inputSchema: z.object({}),
       annotations: {
         readOnlyHint: true,
@@ -322,6 +336,8 @@ export function registerTools(server: McpServer, store: ErdStore) {
     },
     async () => {
       const diagram = await store.load();
+      const statusSidecar = await loadErdStatusSidecar(store.filePath);
+      applyStatusSidecar(diagram, statusSidecar);
       return textResult(JSON.stringify(diagram, null, 2));
     }
   );
@@ -342,6 +358,8 @@ export function registerTools(server: McpServer, store: ErdStore) {
       if (Object.keys(diagram.tables).length === 0) {
         return textResult('Schema is empty. Create tables first.');
       }
+      const statusSidecar = await loadErdStatusSidecar(store.filePath);
+      applyStatusSidecar(diagram, statusSidecar);
       return textResult(toMermaid(diagram));
     }
   );
@@ -351,13 +369,17 @@ export function registerTools(server: McpServer, store: ErdStore) {
     'set_dbml',
     {
       description:
-        'Replace the entire ERD with new DBML text in one call. Atomic — the file stays unchanged on parse error. Orphan positions (tables that no longer exist) are pruned from the sidecar.',
+        'Replace the entire ERD with new DBML text in one call. Atomic — the file stays unchanged on parse error. Orphan positions (tables that no longer exist) are pruned from the sidecar. For > 3 mutations prefer this over atomic add/remove tools.',
       inputSchema: z.object({
         dbml: z
           .string()
           .min(1, 'DBML text cannot be empty')
           .describe('Complete DBML schema as a single string'),
       }),
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: true,
+      },
     },
     async ({ dbml }) => {
       // Only DbmlStore has a .dbml-backed file path. For legacy JSON stores
@@ -416,6 +438,9 @@ export function registerTools(server: McpServer, store: ErdStore) {
         validTableIds
       );
 
+      // Prune status sidecar entries for tables/columns that no longer exist.
+      const prunedStatuses = await pruneErdStatusSidecar(store.filePath, tmpDiagram);
+
       return textResult(
         JSON.stringify(
           {
@@ -423,6 +448,7 @@ export function registerTools(server: McpServer, store: ErdStore) {
             tableCount: Object.keys(tmpDiagram.tables).length,
             relationCount: tmpDiagram.relations.length,
             prunedPositions: prunedIds,
+            prunedStatuses,
           },
           null,
           2
@@ -458,6 +484,118 @@ export function registerTools(server: McpServer, store: ErdStore) {
           `SQL export failed for dialect ${dialect}: ${(err as Error).message}`
         );
       }
+    }
+  );
+
+  // --- diagram_set_table_status ---
+  server.registerTool(
+    'diagram_set_table_status',
+    {
+      description:
+        'Set the audit status of a table. Surfaced in the PropertiesPanel badge and the Mermaid export comment block. Pass status=null to clear.',
+      inputSchema: z.object({
+        name: SafeIdentifier.describe('Table name'),
+        status: NodeStatus.nullable().describe(
+          "Status: 'open' (pending), 'done' (verified), 'blocked' (issue). null clears."
+        ),
+      }),
+      annotations: {
+        idempotentHint: true,
+      },
+    },
+    async ({ name, status }) => {
+      const diagram = await store.load();
+      if (!diagram.tables[name]) {
+        const available = Object.keys(diagram.tables).join(', ') || '(none)';
+        return textResult(
+          `Table "${name}" not found. Available tables: ${available}.`
+        );
+      }
+      // Status is persisted in the .erd.status.json sidecar, not in DBML,
+      // because DBML has no native status annotation. See erd-status-sidecar.ts.
+      await updateTableStatus(store.filePath, name, status);
+      return textResult(
+        status === null
+          ? `Cleared status on table "${name}".`
+          : `Set status of table "${name}" to "${status}".`
+      );
+    }
+  );
+
+  // --- diagram_set_column_status ---
+  server.registerTool(
+    'diagram_set_column_status',
+    {
+      description:
+        'Set the audit status of a specific column. Use for fine-grained PII / compliance-review tracking. Pass status=null to clear.',
+      inputSchema: z.object({
+        table: SafeIdentifier.describe('Table containing the column'),
+        columnName: SafeIdentifier.describe('Column name'),
+        status: NodeStatus.nullable().describe(
+          "Status: 'open' (pending), 'done' (verified), 'blocked' (issue). null clears."
+        ),
+      }),
+      annotations: {
+        idempotentHint: true,
+      },
+    },
+    async ({ table, columnName, status }) => {
+      const diagram = await store.load();
+      const t = diagram.tables[table];
+      if (!t) {
+        const available = Object.keys(diagram.tables).join(', ') || '(none)';
+        return textResult(
+          `Table "${table}" not found. Available tables: ${available}.`
+        );
+      }
+      if (!t.columns.some((c) => c.name === columnName)) {
+        const available = t.columns.map((c) => c.name).join(', ');
+        return textResult(
+          `Column "${columnName}" not found in table "${table}". Available: ${available}.`
+        );
+      }
+      await updateColumnStatus(store.filePath, table, columnName, status);
+      return textResult(
+        status === null
+          ? `Cleared status on "${table}.${columnName}".`
+          : `Set status of "${table}.${columnName}" to "${status}".`
+      );
+    }
+  );
+
+  // --- diagram_update_table ---
+  server.registerTool(
+    'diagram_update_table',
+    {
+      description:
+        'Update mutable fields on a table (description). Omitted fields are left unchanged; description="" clears it.',
+      inputSchema: z.object({
+        name: SafeIdentifier.describe('Table name'),
+        description: z
+          .string()
+          .max(512)
+          .optional()
+          .describe('New description; empty string clears it'),
+      }),
+      annotations: {
+        idempotentHint: true,
+      },
+    },
+    async ({ name, description }) => {
+      const diagram = await store.load();
+      const table = diagram.tables[name];
+      if (!table) {
+        const available = Object.keys(diagram.tables).join(', ') || '(none)';
+        return textResult(
+          `Table "${name}" not found. Available tables: ${available}.`
+        );
+      }
+      if (description !== undefined) {
+        if (description === '') delete table.description;
+        else table.description = description;
+      }
+      await store.save(diagram);
+      return textResult(`Updated table "${name}".`);
     }
   );
 }
