@@ -21,7 +21,9 @@ import type { Diagram, NodeStatus_ } from './schema.js';
 const StatusValue = z.enum(['open', 'done', 'blocked']);
 
 export const ErdStatusSidecarSchema = z.object({
-  version: z.string().default('1.1'),
+  // Pinned to literal so a v1.2+ release with breaking shape is rejected
+  // rather than silently mis-parsed (kieran-review N7).
+  version: z.literal('1.1').default('1.1'),
   tables: z.record(z.string(), StatusValue).default({}),
   columns: z.record(z.string(), StatusValue).default({}),
 });

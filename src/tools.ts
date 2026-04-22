@@ -153,7 +153,8 @@ export function registerTools(server: McpServer, store: ErdStore) {
   server.registerTool(
     'diagram_add_column',
     {
-      description: 'Add a column to an existing table',
+      description:
+        'Add a column to an existing table. For > 3 mutations in a single turn prefer `set_dbml`.',
       inputSchema: z.object({
         table: SafeIdentifier.describe('Table to add the column to'),
         column: z.object({
@@ -230,7 +231,8 @@ export function registerTools(server: McpServer, store: ErdStore) {
   server.registerTool(
     'diagram_add_relation',
     {
-      description: 'Add a foreign key relation between two tables',
+      description:
+        'Add a foreign key relation between two tables. For > 3 mutations in a single turn prefer `set_dbml`.',
       inputSchema: z.object({
         fromTable: SafeIdentifier.describe('Source table'),
         fromColumn: SafeIdentifier.describe('Source column (FK)'),

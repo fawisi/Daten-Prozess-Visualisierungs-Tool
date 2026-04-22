@@ -5,29 +5,30 @@ import { z } from 'zod';
 import { deriveModePath, assertSidecarInsideRoot } from './positions.js';
 
 /**
- * Mode/level sidecar schema. Kept as a Zod discriminated union on
- * `kind` (plan R7 / R8) so a single loader can serve both `bpmn` and
- * the future `landscape` artefacts without ambiguity.
+ * Mode sidecar schema. Built as a Zod discriminated union on `kind`
+ * (plan R7 / R8) so a second branch (`landscape`, added in P2) can
+ * slot in without breaking the loader contract. v1.1 P0 ships only
+ * the `bpmn` branch — registering `LandscapeModeSidecarSchema` now
+ * without a producer would let a sidecar get written to disk that no
+ * tool can read.
+ *
+ * `version` is pinned to the literal `'1.1'` so a file written by a
+ * future schema-v1.2 release (breaking shape) is rejected rather than
+ * silently mis-parsed.
  */
 export const BpmnModeSidecarSchema = z.object({
   kind: z.literal('bpmn'),
   mode: z.enum(['simple', 'bpmn']),
-  version: z.string().default('1.1'),
+  version: z.literal('1.1'),
 });
 
-export const LandscapeModeSidecarSchema = z.object({
-  kind: z.literal('landscape'),
-  mode: z.enum(['l1', 'l2']),
-  version: z.string().default('1.1'),
-});
-
+// TODO(p2): add LandscapeModeSidecarSchema branch + `landscape_set_mode`
+// tool together so every sidecar `kind` has a producer.
 export const ModeSidecarSchema = z.discriminatedUnion('kind', [
   BpmnModeSidecarSchema,
-  LandscapeModeSidecarSchema,
 ]);
 
 export type BpmnModeSidecar = z.infer<typeof BpmnModeSidecarSchema>;
-export type LandscapeModeSidecar = z.infer<typeof LandscapeModeSidecarSchema>;
 export type ModeSidecar = z.infer<typeof ModeSidecarSchema>;
 
 /**

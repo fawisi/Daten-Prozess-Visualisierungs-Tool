@@ -173,38 +173,40 @@ function NodeProperties({
           </Field>
         )}
 
-        <Field label={t.properties.status}>
-          <div
-            role="radiogroup"
-            aria-label={t.properties.status}
-            className="grid grid-cols-3 gap-1"
-          >
-            {STATUS_OPTIONS.map((opt) => {
-              const selected = status === opt;
-              return (
-                <button
-                  key={opt}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => {
-                    const next = selected ? null : opt;
-                    setStatus(next);
-                    handleCommit('status', next);
-                  }}
-                  className={cn(
-                    'h-8 rounded-md border px-2 text-xs font-medium transition-colors',
-                    selected
-                      ? statusButtonActiveClass(opt)
-                      : 'bg-background hover:bg-accent text-muted-foreground'
-                  )}
-                >
-                  {statusLabel(opt)}
-                </button>
-              );
-            })}
-          </div>
-        </Field>
+        {node.diagramType === 'bpmn' && (
+          <Field label={t.properties.status}>
+            <div
+              role="radiogroup"
+              aria-label={t.properties.status}
+              className="grid grid-cols-3 gap-1"
+            >
+              {STATUS_OPTIONS.map((opt) => {
+                const selected = status === opt;
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => {
+                      const next = selected ? null : opt;
+                      setStatus(next);
+                      handleCommit('status', next);
+                    }}
+                    className={cn(
+                      'h-8 rounded-md border px-2 text-xs font-medium transition-colors',
+                      selected
+                        ? statusButtonActiveClass(opt)
+                        : 'bg-background hover:bg-accent text-muted-foreground'
+                    )}
+                  >
+                    {statusLabel(opt)}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+        )}
 
         <Field label={t.properties.comment}>
           <textarea

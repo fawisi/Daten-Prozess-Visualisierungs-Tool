@@ -156,8 +156,9 @@ export const de: Dict = {
   },
 };
 
-// EN ships as a mirror of DE for v1.1 (plan R11: EN-Dict empty shape). The
-// language switcher in TopHeader stays hidden until the EN values are
-// audited by a native speaker — shipping DE strings under an "EN" label
-// would be worse than a single-language app.
-export const en: Dict = de;
+// EN-Dict deliberately not exported in v1.1 (plan R11: "EN-Dict empty
+// shape in v1.1"). Re-export here once EN values have been audited by
+// a native speaker — shipping DE strings under an "EN" label is worse
+// than a single-language app. Until then, `Locale` below narrows to
+// `'de'` and the `VisoEditor` prop rejects other values at the type
+// level.

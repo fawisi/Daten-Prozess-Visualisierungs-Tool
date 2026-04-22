@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react';
 
+function clearBodyDragState(): void {
+  if (typeof document === 'undefined') return;
+  delete document.body.dataset.visoDragging;
+  document.body.style.cursor = '';
+}
+
 /**
  * Palette-to-canvas Pointer-Events drag. HTML5 Drag-and-Drop is broken on
  * iOS Safari (no data transfer for touch drags); Pointer Events work
@@ -80,8 +86,7 @@ export function usePaletteDrag(toolType: string) {
       startPosRef.current = null;
       draggingRef.current = false;
       buttonRef.current = null;
-      delete document.body.dataset.visoDragging;
-      document.body.style.cursor = '';
+      clearBodyDragState();
 
       if (!wasDragging) {
         // Not a drag — let the onClick handler run (click-to-place).
@@ -101,9 +106,13 @@ export function usePaletteDrag(toolType: string) {
     startPosRef.current = null;
     draggingRef.current = false;
     buttonRef.current = null;
-    delete document.body.dataset.visoDragging;
-    document.body.style.cursor = '';
+    clearBodyDragState();
   }, []);
+
+  // If the palette remounts (locale switch, route change) mid-drag the
+  // body-dataset + cursor state would leak. Clear on unmount so the
+  // page never gets stuck in "copy" cursor mode.
+  useEffect(() => () => clearBodyDragState(), []);
 
   return { onPointerDown, onPointerMove, onPointerUp, onPointerCancel };
 }

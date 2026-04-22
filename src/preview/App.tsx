@@ -33,7 +33,7 @@ import { useApiConfig } from '@/state/ApiConfig.js';
 import { I18nProvider, useI18n } from '@/i18n/useI18n.js';
 import { useTheme } from '@/state/useTheme.js';
 import { renderDiagramPng, renderDiagramSvg } from '@/export/render-diagram.js';
-import type { Process } from '../bpmn/schema.js';
+import { ProcessSchema, type Process } from '../bpmn/schema.js';
 
 // Stable references
 const erdNodeTypes = { table: TableNode };
@@ -493,7 +493,19 @@ function EditorShell({
         const handles = canvasRef.current;
         if (!handles) return;
         const raw = await handles.refreshSource();
-        const doc = JSON.parse(raw) as { nodes: Record<string, Record<string, unknown>>; flows: unknown[] };
+        // Parse-first-then-mutate: a malformed file on disk should not
+        // be silently round-tripped. Abort if Zod rejects the current
+        // state; the user sees their edit no-op rather than corrupting
+        // the file (kieran-review B2).
+        let parsedDoc: unknown;
+        try {
+          parsedDoc = JSON.parse(raw);
+        } catch {
+          return;
+        }
+        const validated = ProcessSchema.safeParse(parsedDoc);
+        if (!validated.success) return;
+        const doc = validated.data;
         const node = doc.nodes[id];
         if (!node) return;
         if (update.label !== undefined) node.label = update.label;
@@ -501,7 +513,9 @@ function EditorShell({
           if (update.description === '') delete node.description;
           else node.description = update.description;
         }
-        if (update.type !== undefined) node.type = update.type;
+        if (update.type !== undefined) {
+          node.type = update.type as Process['nodes'][string]['type'];
+        }
         if (update.status !== undefined) {
           if (update.status === null) delete node.status;
           else node.status = update.status;
@@ -522,8 +536,18 @@ function EditorShell({
         api.endpoints.authHeader ? { headers: { Authorization: api.endpoints.authHeader } } : undefined
       );
       if (!currentRes.ok) throw new Error(`Fetch BPMN failed: ${currentRes.status} ${currentRes.statusText}`);
-      const raw = (await currentRes.json()) as { data?: Process } | Process;
-      const processDoc: Process = 'data' in raw && raw.data ? raw.data : (raw as Process);
+      const rawJson = (await currentRes.json()) as unknown;
+      // Hub wraps the payload in `{ ok, data }`; Vite returns the raw
+      // process. Unwrap then validate — never trust the wire (kieran B2).
+      const unwrapped =
+        rawJson && typeof rawJson === 'object' && 'data' in (rawJson as object)
+          ? (rawJson as { data: unknown }).data
+          : rawJson;
+      const validated = ProcessSchema.safeParse(unwrapped);
+      if (!validated.success) {
+        throw new Error(`Hub returned invalid BPMN schema: ${validated.error.message}`);
+      }
+      const processDoc = validated.data;
       const node = processDoc.nodes?.[id];
       if (!node) return;
       if (update.label !== undefined) node.label = update.label;

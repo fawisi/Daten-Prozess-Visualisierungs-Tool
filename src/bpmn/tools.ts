@@ -41,7 +41,7 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
     'process_add_node',
     {
       description:
-        'Add a node to the process diagram (task, gateway, start-event, or end-event)',
+        'Add a node to the process diagram (task, gateway, start-event, or end-event). For > 3 mutations in a single turn prefer `set_bpmn`.',
       inputSchema: z.object({
         id: NodeIdentifier.describe('Unique node ID'),
         type: ProcessNodeType.describe('Node type'),
@@ -129,7 +129,8 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
   server.registerTool(
     'process_add_flow',
     {
-      description: 'Add a sequence flow between two nodes',
+      description:
+        'Add a sequence flow between two nodes. For > 3 mutations in a single turn prefer `set_bpmn`.',
       inputSchema: z.object({
         from: NodeIdentifier.describe('Source node ID'),
         to: NodeIdentifier.describe('Target node ID'),

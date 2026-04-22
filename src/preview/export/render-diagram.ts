@@ -83,11 +83,16 @@ export async function renderDiagramPng(
   if (!prepared) {
     throw new Error('Canvas is empty — nothing to export.');
   }
+  // Cap pixelRatio so a caller passing an outsized value cannot OOM
+  // Safari on iPad (security-review CWE-400). `Math.min` against the
+  // performance-gate ceiling gives both callers and defaults a safe
+  // upper bound.
+  const pixelRatio = Math.min(options.pixelRatio ?? 1.5, 2);
   const dataUrl = await toPng(prepared.el, {
     width,
     height,
     backgroundColor: resolveBgColor(options.theme),
-    pixelRatio: options.pixelRatio ?? 1.5,
+    pixelRatio,
     cacheBust: true,
     fontEmbedCSS: prepared.fontEmbedCSS,
     style: prepared.style,
@@ -120,16 +125,11 @@ export async function renderDiagramSvg(
   return dataUrlToBlob(dataUrl);
 }
 
-function dataUrlToBlob(dataUrl: string): Blob {
-  const [header, payload] = dataUrl.split(',', 2);
-  const isBase64 = /;base64$/.test(header) || /base64/.test(header);
-  const mimeMatch = /^data:([^;,]+)/.exec(header);
-  const mime = mimeMatch?.[1] ?? 'application/octet-stream';
-  if (isBase64) {
-    const binary = atob(payload);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return new Blob([bytes], { type: mime });
-  }
-  return new Blob([decodeURIComponent(payload)], { type: mime });
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  // Native fetch handles both base64 + URL-encoded data URLs, runs the
+  // byte copy on the browser's optimised path, and is ~1 line vs the
+  // hand-rolled loop that would block the main thread on 4K exports
+  // (performance-review #5).
+  const res = await fetch(dataUrl);
+  return res.blob();
 }

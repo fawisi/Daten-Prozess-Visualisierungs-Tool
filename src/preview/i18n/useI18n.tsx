@@ -1,8 +1,11 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { de, en } from './dict.js';
+import { de } from './dict.js';
 import type { Dict, PersistentStatus } from './dict.js';
 
-export type Locale = 'de' | 'en';
+// v1.1: DE only. EN shape in dict.ts is ready for the second-locale
+// audit; narrowing here prevents the VisoEditor prop from accepting
+// 'en' at the type level (kieran-review B1).
+export type Locale = 'de';
 
 interface I18nContextValue {
   locale: Locale;
@@ -13,7 +16,19 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-const DICTS: Record<Locale, Dict> = { de, en };
+const DICTS: Record<Locale, Dict> = { de };
+
+// Module-level const so the fallback path does not allocate a new
+// object per `useI18n()` call — downstream consumers memoize cheaply.
+const FALLBACK_VALUE: I18nContextValue = {
+  locale: 'de',
+  t: de,
+  statusLabel: (status) => {
+    if (status === 'open') return de.properties.status_open;
+    if (status === 'done') return de.properties.status_done;
+    return de.properties.status_blocked;
+  },
+};
 
 export function I18nProvider({
   children,
@@ -40,19 +55,7 @@ export function I18nProvider({
 
 export function useI18n(): I18nContextValue {
   const ctx = useContext(I18nContext);
-  if (ctx) return ctx;
-  // Fallback: when no provider is mounted (leaf components under test or
-  // third-party hosts) DE is the sensible default. Matches the
-  // `useTheme()` fallback pattern elsewhere.
-  return {
-    locale: 'de',
-    t: de,
-    statusLabel: (status) => {
-      if (status === 'open') return de.properties.status_open;
-      if (status === 'done') return de.properties.status_done;
-      return de.properties.status_blocked;
-    },
-  };
+  return ctx ?? FALLBACK_VALUE;
 }
 
 export type { Dict, PersistentStatus };
