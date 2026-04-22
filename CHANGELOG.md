@@ -4,6 +4,100 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-04-22
+
+Consulting-ready release. Turns `viso-mcp` from a diagram editor into a
+TAFKA-style audit tool with a third diagram dimension (System-Landscape),
+narrative-to-diagram parsing, deterministic Handoff-Bundles, and a DE-first UI.
+
+### Added
+
+- **System-Landscape (C4 L1 + L2)** as third diagram kind alongside ERD and
+  BPMN. Full stack: Zod schema (discriminated union on `kind`), `LandscapeStore`
+  with atomic FS-IO, 13 MCP tools (add/remove node + relation, update_node,
+  set_status, set_parent for boundary containment, set_mode / get_mode,
+  parse_description, set_landscape bulk, export_mermaid with
+  `variant: 'flowchart' | 'architecture-beta'`, get_schema with metadata
+  envelope). HTTP adapter + Vite plugin routes for browser + hub consumers.
+  Single memoised React-Flow node component parameterised on 7 kinds (Person,
+  System, External, Container, Database, Cloud, Boundary).
+- **Narrative-to-Diagram parsers** for all three diagram kinds. Regex-first
+  with an LLM-reserved branch that currently degrades to regex (MCP sampling
+  not host-supported yet). KMU-entity dictionary (~150 DE-Mittelstand systems)
+  hard-separates look-alike entities (Shopify vs Shopware). Layered dedup:
+  dictionary → exact → Levenshtein ≤ 2 → trigram-Jaccard length-ratio.
+- **Handoff-Bundle** deterministic Zip (STORE, UNIX platform, fixed date)
+  with whitelisted entries + 5 MiB / 20-entry caps. `export_bundle` +
+  `import_bundle` MCP tools with `onConflict: 'rename' | 'overwrite' | 'abort'`
+  so re-imports never silently clobber. Browser export via `html-to-image`
+  + JSZip, CLI export via plain `fs`.
+- **Status overlay** (`open` | `done` | `blocked`, EN-persistent) on
+  BPMN nodes, ERD tables/columns, and Landscape nodes + relations. Rendered
+  in canvas as a ring + StatusBadge, in Mermaid as scoped `classDef`.
+  `.erd.status.json` sidecar preserves ERD status through DBML round-trips.
+- **Two-Mode Prozess** toggle (`simple` vs full `bpmn`). Nondestructive
+  downgrade keeps schema nodes; UI filters palette + shows hidden-count.
+  `.bpmn.mode.json` sidecar + `process_get_schema` `metadata.mode + hiddenIds`.
+- **DE-first UI** via typed const-dictionary in `src/preview/i18n/`.
+  `Locale` narrowed to `'de'` in v1.1 until EN values are audited.
+- **SVG / PNG canvas export** via pinned `html-to-image@1.11.11` (exact,
+  per plan R3 — 1.11.12+ drops edges in React-Flow exports). Retina-safe
+  via `getFontEmbedCSS` + `await document.fonts.ready`.
+- **Pointer-Events drag-and-drop** from the palette to the canvas, iPad
+  Safari-safe (HTML5 DnD has no touch `dataTransfer`). Additive to the
+  existing click-to-place flow.
+- **Mermaid-label escape** (`escapeMermaidLabel`) applied across ERD, BPMN,
+  and Landscape emitters — defeats the CVE-2021-23648 / CVE-2022-35930
+  injection class.
+- **Sidecar-path guard** (`assertSidecarInsideRoot`) anchors every sidecar
+  write to the source's directory, defending against path traversal.
+- **MCP tool annotations** (`readOnlyHint` / `destructiveHint` /
+  `idempotentHint`) applied per the 2025-06-18 spec across all tools.
+  `set_bpmn` + `set_dbml` + `set_landscape` documented as
+  `destructiveHint + idempotentHint` with batching-hint in their
+  description (`> 3 mutations prefer set_*`).
+
+### Changed
+
+- `package.json`: version bumped to 1.1.0. `peerDependenciesMeta` marks
+  React / ReactDOM / @xyflow/react optional so server-only consumers
+  install cleanly. `sideEffects: ['**/*.css']` protects `preview.css` from
+  tree-shaking in downstream bundlers (plan R6). `engines: >= 20.18`.
+  `overrides: { "hono": "^4.12.12" }` closes transitive CVEs from
+  `@dbml/core → @hono/node-server` (plan R10).
+- `process_get_schema` response shape changed to `{ process, metadata }`.
+  `process` is the plain ProcessSchema payload (safe to pipe back through
+  `set_bpmn`); `metadata` is read-only sidecar-derived state.
+- `ErdStore` interface grew a public `filePath: string` so sidecar
+  helpers can derive their paths without leaking the concrete class.
+- `TopHeader` shows a segmented Mode-Toggle (Einfach / BPMN-Profi) when
+  a BPMN file is open, with optimistic-revert on HTTP-PUT failure.
+
+### Removed / Deprecated
+
+- **Free color picker** in `PropertiesPanel` replaced by the Status-UI.
+  `NodeUpdate.color` remains on the type (`@deprecated`) for one minor
+  version to give Hub consumers a migration window.
+
+### Security
+
+- Plan Req #1 (Mermaid-label escape), #4 (sidecar-path guard), #8
+  (MCP-tool-annotations) shipped. Handoff-Bundle importer enforces
+  entry whitelist, 5 MiB / 20-entry caps (plan Req #2).
+
+### Dependencies
+
+- Added: `jszip@^3.10`, `html-to-image@1.11.11` (exact pin), `fast-check`
+  (dev), `fastest-levenshtein`.
+
+### Tests
+
+- 207 tests total (baseline v1.0 relaunch: 109). +64 from P0 (status + mermaid
+  escape + MCP parity), +10 P1 (mode sidecar + idempotenz + http), +14 P2
+  (landscape schema), +9 P2 (mermaid), +12 P2.1 (bundle serialize + tools),
+  +22 P3 (parse-description).
+- Bundle size 461 kB gzipped (plan gate 650 early-warning, 800 hard).
+
 ## [1.0.0] — Unreleased
 
 This is a **full relaunch** of `daten-viz-mcp@0.2.0` under a new name,

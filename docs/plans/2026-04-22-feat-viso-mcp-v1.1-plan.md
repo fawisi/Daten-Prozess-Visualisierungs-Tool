@@ -1,7 +1,7 @@
 ---
 title: viso-mcp v1.1 — Consulting-Werkzeug, Two-Mode, System-Landscape, Narrative-to-Diagram
 type: feat
-status: active
+status: completed
 date: 2026-04-22
 deepened: 2026-04-22
 supersedes_brainstorm: docs/brainstorms/2026-04-22-viso-mcp-funktional-roadmap-brainstorm.md
@@ -1035,10 +1035,17 @@ Zusätzlich aus der Parity-Analyse (amended 2026-04-22 nach Agent-Native-Review)
 - [ ] iPad Pro Portrait 12.9″: alle Flows durchführbar, Drag-Drop mit Finger.
 - [ ] Phone-Viewport zeigt Warn-Banner.
 
-#### P5 — Release
-- [ ] `npm install viso-mcp@1.1.0` global installiert.
-- [ ] `npx viso-mcp init` im leeren Projekt erzeugt funktionierendes Setup.
-- [ ] GitHub-Release-Tag `v1.1.0` + CHANGELOG.
+#### P5 — Release (Pre-Publish)
+- [x] `package.json` auf 1.1.0 + R6 metadata: sideEffects, engines,
+      exports-types-first, peerDependenciesMeta.optional=true,
+      overrides.hono, repository/bugs/homepage/keywords.
+- [x] `CHANGELOG.md` mit vollständigem v1.1.0-Abschnitt (Added, Changed,
+      Removed, Security, Dependencies, Tests).
+- [x] `npm run typecheck` als Script eingeführt.
+- [ ] `npx viso-mcp init` Smoke-Test im leeren Projekt — steht aus vor
+      `npm publish`.
+- [ ] GitHub Release Tag `v1.1.0` — steht aus vor `npm publish`.
+- [ ] `npm publish --access public` — steht aus (Trusted-Publishing Setup).
 
 ### Non-Functional Requirements
 

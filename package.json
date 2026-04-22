@@ -1,8 +1,15 @@
 {
   "name": "viso-mcp",
-  "version": "1.0.0",
-  "description": "Agent-native MCP server for ER diagram (DBML) and BPMN process visualization",
+  "version": "1.1.0",
+  "description": "Agent-native MCP server for ER (DBML), BPMN process, and C4 System-Landscape visualization. Consulting-ready narrative-to-diagram, Handoff-Bundle export, DE-first UI.",
   "type": "module",
+  "sideEffects": [
+    "**/*.css",
+    "./dist/preview.css"
+  ],
+  "engines": {
+    "node": ">=20.18"
+  },
   "bin": {
     "viso-mcp": "./dist/cli.cjs"
   },
@@ -16,6 +23,7 @@
   ],
   "exports": {
     ".": {
+      "types": "./dist/server.d.ts",
       "import": "./dist/server.js",
       "require": "./dist/server.cjs"
     },
@@ -25,6 +33,7 @@
     },
     "./preview.css": "./dist/preview.css",
     "./http-adapter": {
+      "types": "./dist/http-adapter.d.ts",
       "import": "./dist/http-adapter.js",
       "require": "./dist/http-adapter.cjs"
     }
@@ -36,13 +45,13 @@
   },
   "peerDependenciesMeta": {
     "react": {
-      "optional": false
+      "optional": true
     },
     "react-dom": {
-      "optional": false
+      "optional": true
     },
     "@xyflow/react": {
-      "optional": false
+      "optional": true
     }
   },
   "scripts": {
@@ -50,20 +59,36 @@
     "dev": "tsup --watch",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
     "preview": "vite --config vite.config.ts"
   },
   "keywords": [
     "mcp",
+    "agent-native",
+    "diagram",
     "er-diagram",
     "dbml",
     "bpmn",
-    "database",
+    "c4-model",
+    "system-landscape",
+    "consulting",
+    "mermaid",
     "visualization",
-    "ai-agent",
     "claude",
     "cursor"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fabianwillisimon/viso-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fabianwillisimon/viso-mcp/issues"
+  },
+  "homepage": "https://github.com/fabianwillisimon/viso-mcp#readme",
   "license": "MIT",
+  "overrides": {
+    "hono": "^4.12.12"
+  },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
     "@dbml/core": "^7.1.1",
