@@ -39,7 +39,7 @@ export interface PropertiesPanelProps {
   attachmentSlot?: (ctx: {
     nodeId: string;
     nodeType: string;
-    diagramType: 'bpmn' | 'erd';
+    diagramType: 'bpmn' | 'erd' | 'landscape';
   }) => React.ReactNode;
   attachmentEligibleTypes?: string[];
 }

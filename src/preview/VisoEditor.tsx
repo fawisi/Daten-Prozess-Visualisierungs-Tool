@@ -29,12 +29,12 @@ export interface VisoEditorProps {
   attachmentSlot?: (ctx: {
     nodeId: string;
     nodeType: string;
-    diagramType: 'bpmn' | 'erd';
+    diagramType: 'bpmn' | 'erd' | 'landscape';
   }) => React.ReactNode;
   /** Node/table types that render the attachment slot; default `['task', 'table']`. */
   attachmentEligibleTypes?: string[];
   /** Pick which diagram the shell opens with when the file list is unavailable. */
-  initialDiagramType?: 'bpmn' | 'erd';
+  initialDiagramType?: 'bpmn' | 'erd' | 'landscape';
   /** Called with the current selection; `null` when nothing is selected. */
   onSelectionChange?: (node: SelectedNode | null) => void;
   /** Extra className for the root wrapper; use to constrain height in Next.js pages. */

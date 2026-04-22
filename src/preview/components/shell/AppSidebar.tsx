@@ -17,7 +17,7 @@ import { Table2, GitBranch, FileJson } from 'lucide-react';
 export interface DiagramFile {
   name: string;
   path: string;
-  type: 'erd' | 'bpmn';
+  type: 'erd' | 'bpmn' | 'landscape';
 }
 
 interface AppSidebarProps {

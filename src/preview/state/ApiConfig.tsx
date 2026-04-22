@@ -13,6 +13,12 @@ export interface ApiEndpoints {
   bpmnMode: string | null;
   /** List of IDs the canvas should hide in simple mode. */
   bpmnHiddenElements: string | null;
+  /** Landscape schema GET (returns full landscape) + PUT for full replace. */
+  landscapeSchema: string | null;
+  landscapePositions: string | null;
+  landscapeSource: string | null;
+  landscapePut: string | null;
+  landscapeMode: string | null;
   filesList: string | null;
   /** WebSocket URL for live reloads; null disables the live connection. */
   wsUrl: string | null;
@@ -35,8 +41,13 @@ const DEFAULT_ENDPOINTS: ApiEndpoints = {
   bpmnPositions: '/__viso-api/bpmn/positions',
   bpmnSource: '/__viso-api/bpmn/source',
   bpmnPut: null,
-  bpmnMode: null, // Vite plugin does not surface mode endpoints today; hub does.
-  bpmnHiddenElements: null,
+  bpmnMode: '/__viso-api/bpmn/mode',
+  bpmnHiddenElements: '/__viso-api/bpmn/hidden-elements',
+  landscapeSchema: '/__viso-api/landscape/schema',
+  landscapePositions: '/__viso-api/landscape/positions',
+  landscapeSource: '/__viso-api/landscape/source',
+  landscapePut: null,
+  landscapeMode: '/__viso-api/landscape/mode',
   filesList: '/__viso-api/files',
   wsUrl: null, // vite-plugin resolves same-origin /__viso-ws; preview App.tsx handles explicitly
 };
@@ -91,6 +102,11 @@ export function ApiConfigProvider({
       bpmnPut: `${hubBase}/bpmn`,
       bpmnMode: `${hubBase}/bpmn/mode`,
       bpmnHiddenElements: `${hubBase}/bpmn/hidden-elements`,
+      landscapeSchema: `${hubBase}/landscape`,
+      landscapePositions: defaults.landscapePositions,
+      landscapeSource: defaults.landscapeSource,
+      landscapePut: `${hubBase}/landscape`,
+      landscapeMode: `${hubBase}/landscape/mode`,
       filesList: null,
       wsUrl: `${hubBase}/events`,
       // Spread consumer overrides BEFORE the auth header so a partial
