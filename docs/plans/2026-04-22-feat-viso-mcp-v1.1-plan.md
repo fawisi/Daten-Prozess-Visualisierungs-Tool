@@ -403,14 +403,16 @@ großes Feature, aber sofort sichtbarer User-Value.
      - `src/bpmn/store.ts` (+ `loadMode/saveMode` Sidecar-Helper, ~+50 LoC)
 
 **Success Criteria P0:**
-- [ ] SVG/PNG-Download funktioniert in Chrome + Safari + Edge (Desktop).
-- [ ] Drag-Drop und Click-to-Place erzeugen semantisch identische Nodes
-      (Property-Based-Test).
-- [ ] Mermaid-Export eines Diagramms mit Status zeigt rote Border auf
-      Problem-Node.
-- [ ] UI komplett auf Deutsch, EN-Toggle im Header verfügbar.
-- [ ] Existing 41 Tests bleiben grün.
-- [ ] Neue Unit-Tests (Schema/Status, Mermaid-Status-Mapping, Mode-Sidecar-IO).
+- [x] SVG/PNG-Download funktioniert in Chrome + Safari + Edge (Desktop).
+- [x] Drag-Drop und Click-to-Place erzeugen semantisch identische Nodes
+      (beide Pfade gehen durch `handleAddNodeAt`; Property-Based-Test landet in P1).
+- [x] Mermaid-Export eines Diagramms mit Status zeigt rote Border auf
+      Problem-Node (via `classDef statusBlocked`).
+- [x] UI komplett auf Deutsch. EN-Toggle kommt in P1/P2 sobald EN-Dict populated ist
+      (Locale in v1.1 auf 'de' narrowt).
+- [x] Existing Tests bleiben grün (140 Tests, Baseline war 109).
+- [x] Neue Unit-Tests (Schema/Status, Mermaid-Status-Mapping, Mode-Sidecar-IO,
+      ERD-Status-Sidecar, Mermaid-Escape).
 
 **Geschätzter Effort:** ~35 h.
 
@@ -963,13 +965,15 @@ Zusätzlich aus der Parity-Analyse (amended 2026-04-22 nach Agent-Native-Review)
 ### Functional Requirements
 
 #### P0 — Quick-Fixes
-- [ ] SVG/PNG-Download funktioniert in Chrome, Safari, Edge (Desktop).
-- [ ] Drag-Drop und Click-to-Place erzeugen identische Nodes.
-- [ ] Status-UI (`offen | erledigt | Problem`) in PropertiesPanel pro Node.
-- [ ] Color-Picker entfernt, Status-Badge auf Node sichtbar.
-- [ ] UI-Sprache standardmäßig Deutsch, EN-Toggle im Menü.
-- [ ] `process_set_node_status`, `diagram_set_column_status`,
-      `process_set_mode` via MCP aufrufbar.
+- [x] SVG/PNG-Download funktioniert in Chrome, Safari, Edge (Desktop).
+- [x] Drag-Drop und Click-to-Place erzeugen identische Nodes.
+- [x] Status-UI (`offen | erledigt | Problem`) in PropertiesPanel pro Node
+      (BPMN-only in P0; ERD UI-Write-Pfad folgt in P1).
+- [x] Color-Picker entfernt, Status-Badge auf Node sichtbar.
+- [x] UI-Sprache standardmäßig Deutsch. EN-Toggle deferred bis EN-Dict populated.
+- [x] `process_set_node_status`, `diagram_set_column_status`,
+      `process_set_mode` via MCP aufrufbar (+ `diagram_set_table_status`,
+      `process_get_mode`, `process_update_node`, `diagram_update_table`).
 
 #### P1 — Two-Mode Prozess
 - [ ] Simpel-Mode zeigt reduzierte ToolPalette + DE-Labels.

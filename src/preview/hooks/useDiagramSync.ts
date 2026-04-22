@@ -20,6 +20,7 @@ function diagramToNodesAndEdges(diagram: Diagram): { nodes: Node[]; edges: Edge[
       label: name,
       columns: table.columns,
       description: table.description,
+      status: table.status,
     },
   }));
 

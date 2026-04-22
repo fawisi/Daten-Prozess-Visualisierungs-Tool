@@ -8,6 +8,11 @@ import type { Diagram } from './schema.js';
  *                                        kept for `viso-mcp migrate`
  */
 export interface ErdStore {
+  /**
+   * Absolute path of the source file. Consumers use this to derive
+   * sidecar paths (positions, status, mode).
+   */
+  readonly filePath: string;
   load(): Promise<Diagram>;
   save(diagram: Diagram): Promise<void>;
 }

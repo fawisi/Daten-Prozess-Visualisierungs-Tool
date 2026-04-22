@@ -27,9 +27,13 @@ import { StatusIndicator } from '@/components/shared/StatusIndicator.js';
 import { useDiagramSync } from '@/hooks/useDiagramSync.js';
 import { useProcessSync } from '@/hooks/useProcessSync.js';
 import { useHistory, useHistoryShortcuts } from '@/hooks/useHistory.js';
+import { useSpawnListener } from '@/hooks/usePaletteDrag.js';
 import { ToolStoreProvider, useToolStore, type SelectedNode } from '@/state/useToolStore.js';
 import { useApiConfig } from '@/state/ApiConfig.js';
-import type { Process } from '../bpmn/schema.js';
+import { I18nProvider, useI18n } from '@/i18n/useI18n.js';
+import { useTheme } from '@/state/useTheme.js';
+import { renderDiagramPng, renderDiagramSvg } from '@/export/render-diagram.js';
+import { ProcessSchema, type Process } from '../bpmn/schema.js';
 
 // Stable references
 const erdNodeTypes = { table: TableNode };
@@ -51,6 +55,8 @@ interface CanvasHandles {
   applyAutoLayout: () => Promise<void>;
   snapshotPositions: () => Record<string, { x: number; y: number }>;
   applyPositions: (p: Record<string, { x: number; y: number }>) => void;
+  /** Live React-Flow nodes — used by the PNG/SVG exporter to compute bounds. */
+  getNodes: () => Node[];
   sourceUrl: string;
   refreshSource: () => Promise<string>;
   putSource: (text: string) => Promise<void>;
@@ -108,6 +114,7 @@ function ErdCanvas({
       applyAutoLayout: sync.applyAutoLayout,
       snapshotPositions: sync.snapshotPositions,
       applyPositions: sync.applyPositions,
+      getNodes: () => nodes,
       sourceUrl: erdSourceUrl,
       language: 'json',
       sourceTitle: 'schema.erd.json',
@@ -143,7 +150,7 @@ function ErdCanvas({
   );
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" data-viso-canvas-pane="erd">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -194,6 +201,7 @@ function BpmnCanvas({
       applyAutoLayout: sync.applyAutoLayout,
       snapshotPositions: sync.snapshotPositions,
       applyPositions: sync.applyPositions,
+      getNodes: () => nodes,
       sourceUrl: bpmnSourceUrl,
       language: 'json',
       sourceTitle: 'process.bpmn.json',
@@ -245,7 +253,7 @@ function BpmnCanvas({
   );
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" data-viso-canvas-pane="bpmn">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -299,6 +307,8 @@ function EditorShell({
   onSelectionChange,
 }: EditorShellProps) {
   const api = useApiConfig();
+  const { t } = useI18n();
+  const { resolved: resolvedTheme } = useTheme();
   const [files, setFiles] = useState<DiagramFile[]>([]);
   const [openTabs, setOpenTabs] = useState<DiagramFile[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
@@ -379,13 +389,17 @@ function EditorShell({
       const handles = canvasRef.current;
       if (!handles) return;
       if (format === 'dbml' && activeFile.type !== 'erd') {
-        window.alert('DBML export is ERD-only.');
+        window.alert(t.export.error_dbml_erd_only);
         return;
       }
       if (format === 'sql' && activeFile.type !== 'erd') {
-        window.alert('SQL export is ERD-only.');
+        window.alert(t.export.error_sql_erd_only);
         return;
       }
+
+      // Freeze the theme at export-start so a mid-export toggle does not
+      // flip the canvas background between the toPng() prepass and capture.
+      const themeSnapshot = resolvedTheme;
 
       let body: Blob;
       const filename = `${activeFile.name}.${format}`;
@@ -394,27 +408,25 @@ function EditorShell({
         : undefined;
       const hubPutUrl = activeFile.type === 'bpmn' ? api.endpoints.bpmnPut : api.endpoints.erdPut;
 
-      if (format === 'json') {
-        const text = await handles.refreshSource();
-        body = new Blob([text], { type: 'application/json' });
-      } else if (format === 'dbml') {
-        // Raw DBML source is the active file for ERD — matches what the adapter would send.
+      if (format === 'dbml') {
         const text = await handles.refreshSource();
         body = new Blob([text], { type: 'text/plain' });
       } else if (format === 'mermaid') {
         if (!hubPutUrl) {
-          window.alert('Mermaid export requires the HTTP adapter. Run `viso-mcp http` or configure `apiBaseUrl`.');
+          window.alert(t.export.error_mermaid_requires_http);
           return;
         }
         const res = await fetch(`${hubPutUrl}/export?format=mermaid`, authHeaders ? { headers: authHeaders } : undefined);
         if (!res.ok) {
-          window.alert(`Mermaid export failed: ${res.status} ${res.statusText}`);
+          window.alert(
+            t.export.error_http_fail({ status: res.status, detail: res.statusText })
+          );
           return;
         }
         body = new Blob([await res.text()], { type: 'text/plain' });
       } else if (format === 'sql') {
         if (!api.endpoints.erdPut) {
-          window.alert('SQL export requires the HTTP adapter. Run `viso-mcp http` or configure `apiBaseUrl`.');
+          window.alert(t.export.error_sql_requires_http);
           return;
         }
         const res = await fetch(
@@ -423,13 +435,28 @@ function EditorShell({
         );
         if (!res.ok) {
           const detail = await res.text().catch(() => '');
-          window.alert(`SQL export failed: ${res.status} ${res.statusText}\n${detail}`);
+          window.alert(
+            t.export.error_http_fail({ status: res.status, detail: `${res.statusText} ${detail}` })
+          );
           return;
         }
         body = new Blob([await res.text()], { type: 'text/plain' });
-      } else if (format === 'svg' || format === 'png') {
-        window.alert(`${format.toUpperCase()} export is scheduled for Phase 6 (requires canvas snapshotting).`);
-        return;
+      } else if (format === 'png' || format === 'svg') {
+        const liveNodes = handles.getNodes();
+        try {
+          body =
+            format === 'png'
+              ? await renderDiagramPng(liveNodes, { theme: themeSnapshot })
+              : await renderDiagramSvg(liveNodes, { theme: themeSnapshot });
+        } catch (err) {
+          window.alert(
+            t.export.error_http_fail({
+              status: 0,
+              detail: (err as Error).message,
+            })
+          );
+          return;
+        }
       } else {
         const text = await handles.refreshSource();
         body = new Blob([text], { type: 'text/plain' });
@@ -441,7 +468,7 @@ function EditorShell({
       a.click();
       URL.revokeObjectURL(a.href);
     },
-    [activeFile, api]
+    [activeFile, api, t, resolvedTheme]
   );
 
   const handleSaveSource = useCallback(
@@ -466,7 +493,19 @@ function EditorShell({
         const handles = canvasRef.current;
         if (!handles) return;
         const raw = await handles.refreshSource();
-        const doc = JSON.parse(raw) as { nodes: Record<string, Record<string, unknown>>; flows: unknown[] };
+        // Parse-first-then-mutate: a malformed file on disk should not
+        // be silently round-tripped. Abort if Zod rejects the current
+        // state; the user sees their edit no-op rather than corrupting
+        // the file (kieran-review B2).
+        let parsedDoc: unknown;
+        try {
+          parsedDoc = JSON.parse(raw);
+        } catch {
+          return;
+        }
+        const validated = ProcessSchema.safeParse(parsedDoc);
+        if (!validated.success) return;
+        const doc = validated.data;
         const node = doc.nodes[id];
         if (!node) return;
         if (update.label !== undefined) node.label = update.label;
@@ -474,8 +513,15 @@ function EditorShell({
           if (update.description === '') delete node.description;
           else node.description = update.description;
         }
-        if (update.type !== undefined) node.type = update.type;
-        if (update.color !== undefined) node.color = update.color;
+        if (update.type !== undefined) {
+          node.type = update.type as Process['nodes'][string]['type'];
+        }
+        if (update.status !== undefined) {
+          if (update.status === null) delete node.status;
+          else node.status = update.status;
+        }
+        // `color` lives on NodeUpdate for backwards compat with v1.0 Hub
+        // consumers (@deprecated); we no longer persist it.
         await handles.putSource(JSON.stringify(doc, null, 2));
         return;
       }
@@ -490,8 +536,18 @@ function EditorShell({
         api.endpoints.authHeader ? { headers: { Authorization: api.endpoints.authHeader } } : undefined
       );
       if (!currentRes.ok) throw new Error(`Fetch BPMN failed: ${currentRes.status} ${currentRes.statusText}`);
-      const raw = (await currentRes.json()) as { data?: Process } | Process;
-      const processDoc: Process = 'data' in raw && raw.data ? raw.data : (raw as Process);
+      const rawJson = (await currentRes.json()) as unknown;
+      // Hub wraps the payload in `{ ok, data }`; Vite returns the raw
+      // process. Unwrap then validate — never trust the wire (kieran B2).
+      const unwrapped =
+        rawJson && typeof rawJson === 'object' && 'data' in (rawJson as object)
+          ? (rawJson as { data: unknown }).data
+          : rawJson;
+      const validated = ProcessSchema.safeParse(unwrapped);
+      if (!validated.success) {
+        throw new Error(`Hub returned invalid BPMN schema: ${validated.error.message}`);
+      }
+      const processDoc = validated.data;
       const node = processDoc.nodes?.[id];
       if (!node) return;
       if (update.label !== undefined) node.label = update.label;
@@ -500,6 +556,13 @@ function EditorShell({
         else node.description = update.description;
       }
       if (update.type !== undefined) node.type = update.type as Process['nodes'][string]['type'];
+      if (update.status !== undefined) {
+        if (update.status === null) {
+          delete (node as { status?: unknown }).status;
+        } else {
+          (node as { status?: string }).status = update.status;
+        }
+      }
       const putRes = await fetch(bpmnPutUrl, {
         method: 'PUT',
         headers,
@@ -549,9 +612,7 @@ function EditorShell({
           ([, n]) => (n as { type?: string }).type === 'start-event'
         );
         if (existing) {
-          window.alert(
-            `Der Prozess hat bereits ein Start-Event ("${existing[0]}"). Es darf nur eines geben.`
-          );
+          window.alert(t.validation.single_start_event({ existing: existing[0] }));
           setActiveTool('pointer');
           return;
         }
@@ -593,7 +654,7 @@ function EditorShell({
       // Reset the tool so subsequent clicks don't keep spawning nodes.
       setActiveTool('pointer');
     },
-    [readOnly, api, setActiveTool]
+    [readOnly, api, setActiveTool, t]
   );
 
   const bpmnPaneClick = useMemo(() => {
@@ -603,6 +664,30 @@ function EditorShell({
     }
     return undefined;
   }, [activeTool, handleAddNodeAt, readOnly]);
+
+  // Palette-to-canvas Pointer-Events drag-and-drop (iPad-safe). Converts
+  // the pointer's client coordinates into canvas-relative positions by
+  // hit-testing the pane's bounding rect, then dispatches the same
+  // handleAddNodeAt path that click-to-place uses.
+  const handleSpawnFromPointer = useCallback(
+    (type: string, clientPos: { x: number; y: number }) => {
+      if (readOnly) return;
+      if (diagramType !== 'bpmn') return;
+      if (type !== 'start-event' && type !== 'end-event' && type !== 'task' && type !== 'gateway') {
+        return;
+      }
+      const pane = document.querySelector('[data-viso-canvas-pane="bpmn"]');
+      if (!pane) return;
+      const rect = pane.getBoundingClientRect();
+      handleAddNodeAt(type, { x: clientPos.x - rect.left, y: clientPos.y - rect.top });
+    },
+    [readOnly, diagramType, handleAddNodeAt]
+  );
+
+  useSpawnListener({
+    onSpawn: handleSpawnFromPointer,
+    enabled: !readOnly && diagramType === 'bpmn',
+  });
 
   const actions = useMemo(
     () =>
@@ -711,31 +796,23 @@ function defaultLabel(type: 'start-event' | 'end-event' | 'task' | 'gateway'): s
 }
 
 function CanvasEmpty() {
+  const { t } = useI18n();
   return (
     <div className="h-full w-full flex items-center justify-center">
       <div className="rounded-lg border-dashed border-2 border-muted p-6 max-w-md text-center space-y-2 text-sm text-muted-foreground">
-        <p className="text-base font-semibold text-foreground">No diagram loaded</p>
-        <p>
-          Click a shape in the sidebar or press{' '}
-          <kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[11px]">Cmd</kbd>
-          <span className="mx-0.5">+</span>
-          <kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[11px]">K</kbd>
-          {' '}to open the command palette.
-        </p>
+        <p className="text-base font-semibold text-foreground">{t.empty.canvas_title}</p>
+        <p>{t.empty.canvas_hint}</p>
       </div>
     </div>
   );
 }
 
 function FooterBar() {
+  const { t } = useI18n();
   return (
     <footer className="border-t px-4 py-2 bg-background/60 text-[11px] font-mono text-muted-foreground flex items-center justify-between">
-      <span>
-        Canvas-first Zeichnen · Tools links (aktiv: Pointer) · Properties rechts fuer selektierten Node
-      </span>
-      <span className="italic">
-        Cmd+/ → DBML/JSON-Code-Panel unten einblendbar (Power-Mode)
-      </span>
+      <span>{t.footer.tagline}</span>
+      <span className="italic">{t.footer.tagline_hint}</span>
     </footer>
   );
 }
@@ -743,9 +820,11 @@ function FooterBar() {
 export function App() {
   return (
     <TooltipProvider>
-      <ToolStoreProvider>
-        <EditorShell />
-      </ToolStoreProvider>
+      <I18nProvider locale="de">
+        <ToolStoreProvider>
+          <EditorShell />
+        </ToolStoreProvider>
+      </I18nProvider>
     </TooltipProvider>
   );
 }

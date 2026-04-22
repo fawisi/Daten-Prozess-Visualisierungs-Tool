@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button.js';
 import { Code2, Download, FileJson, Wand2, Moon, Sun } from 'lucide-react';
 import { useToolStore } from '@/state/useToolStore.js';
 import { useTheme } from '@/state/useTheme.js';
+import { useI18n } from '@/i18n/useI18n.js';
 
 export type ExportFormat = 'mermaid' | 'sql' | 'dbml' | 'svg' | 'png';
 
@@ -13,17 +14,18 @@ interface TopHeaderProps {
   onExport: (format: ExportFormat) => void;
 }
 
-const EXPORT_OPTIONS: { id: ExportFormat; label: string; hint: string }[] = [
-  { id: 'mermaid', label: 'Mermaid', hint: '.md' },
-  { id: 'sql', label: 'SQL DDL', hint: '.sql' },
-  { id: 'dbml', label: 'DBML', hint: '.dbml' },
-  { id: 'svg', label: 'SVG', hint: '.svg' },
-  { id: 'png', label: 'PNG', hint: '.png' },
+const EXPORT_OPTION_IDS: { id: ExportFormat; hint: string }[] = [
+  { id: 'mermaid', hint: '.md' },
+  { id: 'sql', hint: '.sql' },
+  { id: 'dbml', hint: '.dbml' },
+  { id: 'svg', hint: '.svg' },
+  { id: 'png', hint: '.png' },
 ];
 
 export function TopHeader({ fileName, badge, onAutoLayout, onExport }: TopHeaderProps) {
   const { codePanelOpen, toggleCodePanel } = useToolStore();
   const { resolved, toggle } = useTheme();
+  const { t } = useI18n();
   const [exportOpen, setExportOpen] = useState(false);
 
   return (
@@ -37,7 +39,7 @@ export function TopHeader({ fileName, badge, onAutoLayout, onExport }: TopHeader
         </div>
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-mono text-sm font-semibold truncate">
-            {fileName ?? 'viso-mcp'}
+            {fileName ?? t.topHeader.app_name}
           </span>
           {badge && (
             <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wide shrink-0">
@@ -53,29 +55,29 @@ export function TopHeader({ fileName, badge, onAutoLayout, onExport }: TopHeader
           size="sm"
           onClick={onAutoLayout}
           className="h-8 gap-1.5"
-          title="Auto-Layout (ELK)"
+          title={t.topHeader.auto_layout_title}
         >
           <Wand2 className="h-3.5 w-3.5" />
-          Auto-Layout
+          {t.topHeader.auto_layout}
         </Button>
         <Button
           variant={codePanelOpen ? 'secondary' : 'outline'}
           size="sm"
           onClick={toggleCodePanel}
           className="h-8 gap-1.5 font-mono"
-          title="Toggle Code Panel (Cmd+/)"
+          title={t.topHeader.code_title}
           aria-pressed={codePanelOpen}
         >
           <Code2 className="h-3.5 w-3.5" />
-          Code
+          {t.topHeader.code}
         </Button>
         <Button
           variant="outline"
           size="sm"
           onClick={toggle}
           className="h-8 w-8 p-0"
-          title={resolved === 'dark' ? 'Zu Light Mode wechseln' : 'Zu Dark Mode wechseln'}
-          aria-label={resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={resolved === 'dark' ? t.topHeader.theme_switch_light : t.topHeader.theme_switch_dark}
+          aria-label={resolved === 'dark' ? t.topHeader.theme_switch_light : t.topHeader.theme_switch_dark}
           data-compact
         >
           {resolved === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
@@ -87,14 +89,14 @@ export function TopHeader({ fileName, badge, onAutoLayout, onExport }: TopHeader
             onClick={() => setExportOpen((v) => !v)}
             onBlur={() => setTimeout(() => setExportOpen(false), 150)}
             className="h-8 gap-1.5"
-            title="Export"
+            title={t.topHeader.export}
           >
             <Download className="h-3.5 w-3.5" />
-            Export
+            {t.topHeader.export}
           </Button>
           {exportOpen && (
             <div className="absolute right-0 top-9 z-40 min-w-[160px] rounded-md border bg-popover shadow-md overflow-hidden">
-              {EXPORT_OPTIONS.map((opt) => (
+              {EXPORT_OPTION_IDS.map((opt) => (
                 <button
                   key={opt.id}
                   type="button"
@@ -107,7 +109,7 @@ export function TopHeader({ fileName, badge, onAutoLayout, onExport }: TopHeader
                 >
                   <span className="flex items-center gap-2">
                     <FileJson className="h-3 w-3 opacity-60" />
-                    {opt.label}
+                    {t.export[opt.id]}
                   </span>
                   <span className="text-muted-foreground">{opt.hint}</span>
                 </button>

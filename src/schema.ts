@@ -12,6 +12,10 @@ export const ColumnType = z
   .string()
   .max(128, 'Column type must be at most 128 characters');
 
+// Persistent status values are English (open | done | blocked) so agents
+// + exports stay locale-free. The UI maps them to DE/EN via useI18n().
+export const NodeStatus = z.enum(['open', 'done', 'blocked']);
+
 export const ColumnSchema = z.object({
   name: SafeIdentifier.describe('Column name'),
   type: ColumnType.describe('Column data type (e.g. uuid, varchar, integer)'),
@@ -22,6 +26,9 @@ export const ColumnSchema = z.object({
     .max(512)
     .optional()
     .describe('Human-readable description of this column'),
+  status: NodeStatus.optional().describe(
+    'Audit status: open = pending, done = verified, blocked = issue found'
+  ),
 });
 
 export const TableSchema = z.object({
@@ -33,6 +40,9 @@ export const TableSchema = z.object({
     .max(512)
     .optional()
     .describe('Human-readable description of this table'),
+  status: NodeStatus.optional().describe(
+    'Audit status: open = pending, done = verified, blocked = issue found'
+  ),
 });
 
 export const RelationType = z.enum([
@@ -67,6 +77,7 @@ export const PositionsSchema = z.record(
 );
 
 // Inferred types
+export type NodeStatus_ = z.infer<typeof NodeStatus>;
 export type Column = z.infer<typeof ColumnSchema>;
 export type Table = z.infer<typeof TableSchema>;
 export type RelationType_ = z.infer<typeof RelationType>;

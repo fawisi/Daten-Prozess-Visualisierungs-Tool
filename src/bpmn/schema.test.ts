@@ -48,6 +48,32 @@ describe('ProcessNodeSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts a status field with a valid enum value', () => {
+    const result = ProcessNodeSchema.safeParse({
+      type: 'task',
+      label: 'Migrate users',
+      status: 'blocked',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a node without status (optional field)', () => {
+    const result = ProcessNodeSchema.safeParse({
+      type: 'task',
+      label: 'Migrate users',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects unknown status values — enum is EN-only', () => {
+    const result = ProcessNodeSchema.safeParse({
+      type: 'task',
+      label: 'Migrate users',
+      status: 'offen', // DE translation must not be persisted
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('FlowSchema', () => {
