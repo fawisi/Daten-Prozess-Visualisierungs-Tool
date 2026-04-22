@@ -22,9 +22,9 @@ export interface VisoEditorProps {
   apiBaseUrl?: string;
   /**
    * Render-prop injected into the `PropertiesPanel` when a node of an
-   * eligible type is selected. Hub-owned components (e.g. the TAFKA
-   * screen-recording attachment) hook in here without viso-mcp growing
-   * a hard dependency.
+   * eligible type is selected. Host applications hook workspace-level
+   * attachments (media, screen recordings, external links) in here
+   * without viso-mcp growing a hard dependency on them.
    */
   attachmentSlot?: (ctx: {
     nodeId: string;

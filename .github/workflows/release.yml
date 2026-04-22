@@ -10,12 +10,12 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
 
-# Trusted Publishing uses OIDC to authenticate against npm — no NPM_TOKEN
-# secret is stored in the repo. `id-token: write` grants the runner a
-# short-lived token npm exchanges for publish rights, `contents: read`
-# is the minimum needed to checkout the tagged commit.
+# Minimum-viable permissions at the workflow level. The `publish` job
+# escalates to `id-token: write` for OIDC, but the `verify-and-build`
+# job runs without that scope on purpose — it's the job that exposes the
+# largest dependency-install surface, so it must not be able to mint a
+# Trusted-Publishing token even if a postinstall script tries to exfil it.
 permissions:
-  id-token: write
   contents: read
 
 concurrency:
@@ -23,33 +23,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish to npm (Trusted Publishing)
+  verify-and-build:
+    name: Verify + build + test + package gates
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: release
+    timeout-minutes: 15
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies (lockfile-frozen)
-        run: npm ci
-
-      # Full release gate: build, 207 tests, publint, attw, size-limit.
-      # Matches what CI runs on PRs so a green main ≈ a publishable tag.
-      - name: Release gate (check:release)
-        run: npm run check:release
-
-      # Sanity check: the tag name must match the package.json version so
-      # v1.1.0 can't accidentally publish 1.2.0. Strips the leading v.
+      # Version checks run BEFORE `npm ci` (which invokes postinstall
+      # scripts across ~500 transitive deps). If the tag doesn't match
+      # package.json, fail before any third-party code executes — the
+      # classic fix for the gate-then-install TOCTOU window.
       - name: Verify tag matches package.json version
         if: github.event_name == 'push'
         run: |
@@ -72,13 +59,69 @@ jobs:
             exit 1
           fi
 
-      # Smoke test the tarball before pushing. Catches missing files-field
-      # entries, dist/ misses, or bin-script shebang regressions.
-      - name: npm pack smoke test
-        run: npm pack --dry-run
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Full release gate: build, 207 tests, publint, attw, size-limit.
+      # Runs in a job WITHOUT id-token:write so a malicious postinstall
+      # here cannot exchange OIDC for an npm publish token.
+      - name: Install dependencies (lockfile-frozen)
+        run: npm ci
+
+      - name: Release gate (check:release)
+        run: npm run check:release
+
+      # Hand the built dist/ + metadata to the publish job. The publish
+      # job re-checks out the tag but reinstalls nothing — dist/ comes
+      # straight from this verified build.
+      - name: Upload dist + metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifact
+          path: |
+            dist/
+            package.json
+            package-lock.json
+            README.md
+            CHANGELOG.md
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Publish to npm (Trusted Publishing)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: verify-and-build
+    # workflow_dispatch from main would otherwise publish whatever
+    # package.json says; tag-only gating ensures every publish corresponds
+    # to a signed-off release tag.
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: release
+
+    permissions:
+      # OIDC mint rights ONLY in this job. No `npm ci` runs here, so no
+      # postinstall script ever sees ACTIONS_ID_TOKEN_REQUEST_URL.
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download verified build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifact
 
       # Under Trusted Publishing (npm >= 11.5) the runner authenticates via
       # OIDC; provenance attestations are attached automatically. No --token,
       # no --provenance flag needed — npm detects the id-token and does both.
+      # No `npm ci` — we only need dist/ and package.json to publish.
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --access public --ignore-scripts
