@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button.js';
 import { Code2, Download, FileJson, Wand2, Moon, Sun } from 'lucide-react';
-import { useToolStore } from '@/state/useToolStore.js';
+import { useToolStore, type ProcessMode } from '@/state/useToolStore.js';
 import { useTheme } from '@/state/useTheme.js';
 import { useI18n } from '@/i18n/useI18n.js';
+import { cn } from '@/lib/utils.js';
 
 export type ExportFormat = 'mermaid' | 'sql' | 'dbml' | 'svg' | 'png';
 
@@ -12,6 +13,16 @@ interface TopHeaderProps {
   badge?: string;
   onAutoLayout: () => void;
   onExport: (format: ExportFormat) => void;
+  /** When set, renders the process-mode toggle (BPMN-only). Hidden for ERD files. */
+  showModeToggle?: boolean;
+  /**
+   * Called with the new mode. Must return a Promise resolving to `true`
+   * on successful persistence — the toggle will revert its optimistic
+   * UI state to the previous mode on `false` so the UI never drifts
+   * from disk (kieran-review P1 B2).
+   */
+  onModeChange?: (mode: ProcessMode) => Promise<boolean> | void;
+  hiddenElementsCount?: number;
 }
 
 const EXPORT_OPTION_IDS: { id: ExportFormat; hint: string }[] = [
@@ -22,11 +33,29 @@ const EXPORT_OPTION_IDS: { id: ExportFormat; hint: string }[] = [
   { id: 'png', hint: '.png' },
 ];
 
-export function TopHeader({ fileName, badge, onAutoLayout, onExport }: TopHeaderProps) {
-  const { codePanelOpen, toggleCodePanel } = useToolStore();
+export function TopHeader({
+  fileName,
+  badge,
+  onAutoLayout,
+  onExport,
+  showModeToggle = false,
+  onModeChange,
+  hiddenElementsCount = 0,
+}: TopHeaderProps) {
+  const { codePanelOpen, toggleCodePanel, processMode, setProcessMode } = useToolStore();
   const { resolved, toggle } = useTheme();
   const { t } = useI18n();
   const [exportOpen, setExportOpen] = useState(false);
+
+  async function handleModeChange(next: ProcessMode) {
+    const previous = processMode;
+    setProcessMode(next); // optimistic — snaps back below on PUT failure
+    const result = onModeChange?.(next);
+    if (result instanceof Promise) {
+      const ok = await result;
+      if (!ok) setProcessMode(previous);
+    }
+  }
 
   return (
     <header
@@ -50,6 +79,32 @@ export function TopHeader({ fileName, badge, onAutoLayout, onExport }: TopHeader
       </div>
 
       <div className="flex items-center gap-2">
+        {showModeToggle && (
+          <div
+            role="radiogroup"
+            aria-label={t.topHeader.mode_toggle_aria}
+            className="flex items-center h-8 rounded-md border bg-background p-0.5"
+          >
+            <ModeSegment
+              active={processMode === 'simple'}
+              label={t.topHeader.mode_simple}
+              onClick={() => handleModeChange('simple')}
+            />
+            <ModeSegment
+              active={processMode === 'bpmn'}
+              label={t.topHeader.mode_bpmn}
+              onClick={() => handleModeChange('bpmn')}
+            />
+            {processMode === 'simple' && hiddenElementsCount > 0 && (
+              <span
+                className="ml-1 mr-1 rounded-full bg-amber-500/15 text-amber-600 text-[10px] font-medium px-1.5 py-0.5"
+                title={t.topHeader.mode_hidden_hint({ count: hiddenElementsCount })}
+              >
+                {hiddenElementsCount}
+              </span>
+            )}
+          </div>
+        )}
         <Button
           variant="default"
           size="sm"
@@ -119,5 +174,32 @@ export function TopHeader({ fileName, badge, onAutoLayout, onExport }: TopHeader
         </div>
       </div>
     </header>
+  );
+}
+
+function ModeSegment({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={cn(
+        'h-7 px-2.5 rounded text-xs font-medium transition-colors',
+        active
+          ? 'bg-primary text-primary-foreground'
+          : 'text-muted-foreground hover:text-foreground'
+      )}
+    >
+      {label}
+    </button>
   );
 }

@@ -11,6 +11,7 @@ import {
 import { processToMermaid } from './export-mermaid.js';
 import { derivePositionsPath, prunePositions } from '../positions.js';
 import { loadModeSidecar, saveModeSidecar } from '../mode-sidecar.js';
+import { bpmnOnlyNodeIds, inferProcessMode } from './mode-heuristic.js';
 import type { Process } from './schema.js';
 
 function processSummary(p: Process): string {
@@ -41,7 +42,7 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
     'process_add_node',
     {
       description:
-        'Add a node to the process diagram (task, gateway, start-event, or end-event). For > 3 mutations in a single turn prefer `set_bpmn`.',
+        'Add a node to the process diagram (task, gateway, start-event, or end-event). If the process is in `simple` mode (see `process_get_mode`), BPMN-only gateway kinds (inclusive/parallel) are persisted but hidden in the canvas — switch to `bpmn` mode with `process_set_mode` before placing them, or warn the user. For > 3 mutations in a single turn prefer `set_bpmn`.',
       inputSchema: z.object({
         id: NodeIdentifier.describe('Unique node ID'),
         type: ProcessNodeType.describe('Node type'),
@@ -211,7 +212,8 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
   server.registerTool(
     'process_get_schema',
     {
-      description: 'Read the current process diagram schema as JSON',
+      description:
+        'Read the current process diagram schema. Returns `{ process, metadata }` where `process` is the ProcessSchema payload (feed directly to `set_bpmn` to round-trip) and `metadata` is read-only sidecar state: `mode` (simple | bpmn) and `hiddenIds` (BPMN-only nodes currently hidden in simple mode).',
       inputSchema: z.object({}),
       annotations: {
         readOnlyHint: true,
@@ -219,7 +221,18 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
     },
     async () => {
       const process = await store.load();
-      return textResult(JSON.stringify(process, null, 2));
+      const sidecar = await loadModeSidecar(store.filePath);
+      const mode =
+        sidecar?.kind === 'bpmn' ? sidecar.mode : inferProcessMode(process);
+      // Response envelope: `process` carries the ProcessSchema-shaped
+      // payload an agent can feed straight back into `set_bpmn`;
+      // `metadata` is read-only sidecar-derived state that must not be
+      // written back. Keeping them in separate keys prevents the
+      // silent-strip hazard (kieran-review P1 B1).
+      const hiddenIds = bpmnOnlyNodeIds(process);
+      return textResult(
+        JSON.stringify({ process, metadata: { mode, hiddenIds } }, null, 2)
+      );
     }
   );
 
@@ -400,7 +413,7 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
     'process_set_mode',
     {
       description:
-        "Set the process-mode sidecar (simple | bpmn). Simple-Mode hides BPMN-only UI (inclusive/parallel gateways) but keeps all nodes in the schema. Mode is persisted in <file>.bpmn.mode.json next to the source — not in the process JSON.",
+        "Set the process-mode sidecar (simple | bpmn). Simple-mode hides BPMN-only UI elements (inclusive/parallel gateways, timer events — see `metadata.hiddenIds` from `process_get_schema`) but keeps all nodes in the schema (nondestructive downgrade). Mode is persisted in <file>.bpmn.mode.json next to the source — not in the process JSON.",
       inputSchema: z.object({
         mode: z
           .enum(['simple', 'bpmn'])

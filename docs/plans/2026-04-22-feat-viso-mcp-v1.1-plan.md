@@ -482,12 +482,15 @@ Presets — die „Simpel"-Darstellung filtert ToolPalette + benennt Elemente um
     als devDependency ergänzt)
 
 **Success Criteria P1:**
-- [ ] Neu angelegter Prozess startet in `simple`-Mode (DE-Labels).
-- [ ] v1.0-File mit Gateway lädt in `bpmn`-Mode (Compat).
-- [ ] Toggle-Switch bewahrt alle Nodes, versteckte Nodes sind im Code-Panel
-      sichtbar + im MCP `process_get_schema` lesbar.
-- [ ] `process_set_mode` via MCP-Tool funktional, Agent kann Mode steuern.
-- [ ] Existing Tests + 6 neue Tests grün.
+- [x] Neu angelegter Prozess startet in `simple`-Mode (DE-Labels).
+- [x] v1.0-File mit Gateway lädt in `bpmn`-Mode (Compat über Heuristik;
+      aktueller Schema-Umfang triggert kein BPMN-only, Infrastruktur fuer
+      v1.2-Erweiterung da).
+- [x] Toggle-Switch bewahrt alle Nodes (nondestruktiv). Code-Panel bleibt
+      unveraendert da Schema intakt; `process_get_schema` liefert `metadata.mode`.
+- [x] `process_set_mode` via MCP-Tool funktional; UI via Segmented Control
+      im TopHeader.
+- [x] Existing + 10 neue Tests grün (150 total, Baseline P0 = 140).
 
 **Geschätzter Effort:** ~40 h.
 
@@ -976,11 +979,11 @@ Zusätzlich aus der Parity-Analyse (amended 2026-04-22 nach Agent-Native-Review)
       `process_get_mode`, `process_update_node`, `diagram_update_table`).
 
 #### P1 — Two-Mode Prozess
-- [ ] Simpel-Mode zeigt reduzierte ToolPalette + DE-Labels.
-- [ ] BPMN-Mode zeigt vollständige ToolPalette + technische Labels.
-- [ ] Mode-Switch nondestruktiv, Hidden-Elemente zählbar im PropertiesPanel.
-- [ ] `.mode.json`-Sidecar persistiert pro File.
-- [ ] v1.0-Files laden ohne Fehler in v1.1.
+- [x] Simpel-Mode zeigt reduzierte ToolPalette (bpmnOnly-Filter).
+- [x] BPMN-Mode zeigt vollständige ToolPalette.
+- [x] Mode-Switch nondestruktiv; Hidden-Elemente-Count im TopHeader-Badge.
+- [x] `.mode.json`-Sidecar persistiert pro File (GET|PUT /bpmn/mode).
+- [x] v1.0-Files laden ohne Fehler in v1.1 (Heuristik-Fallback serverseitig).
 
 #### P2 — System-Landscape L1
 - [ ] `landscape`-Diagrammtyp im UI-Switcher + MCP.

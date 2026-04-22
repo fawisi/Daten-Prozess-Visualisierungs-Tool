@@ -1,8 +1,13 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import type { ProcessMode } from '../../bpmn/mode-heuristic.js';
 
 export type Tool = 'pointer' | 'pan' | 'start-event' | 'end-event' | 'task' | 'gateway';
 
 export type DiagramType = 'erd' | 'bpmn';
+
+// Re-export so call sites can import from one place; the type itself
+// is declared alongside the heuristic that produces it (kieran N4).
+export type { ProcessMode };
 
 export interface SelectedNode {
   id: string;
@@ -22,6 +27,8 @@ interface ToolStoreValue {
   commandPaletteOpen: boolean;
   toggleCommandPalette: () => void;
   setCommandPaletteOpen: (open: boolean) => void;
+  processMode: ProcessMode;
+  setProcessMode: (mode: ProcessMode) => void;
 }
 
 const ToolStoreContext = createContext<ToolStoreValue | null>(null);
@@ -40,6 +47,10 @@ export function ToolStoreProvider({ children }: { children: React.ReactNode }) {
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [codePanelOpen, setCodePanelOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  // Default to 'simple' — the canvas will replace this once the
+  // /bpmn/mode sidecar is loaded (or the heuristic falls back for v1.0
+  // files with BPMN-only elements).
+  const [processMode, setProcessMode] = useState<ProcessMode>('simple');
 
   const toggleCodePanel = useCallback(() => setCodePanelOpen((v) => !v), []);
   const toggleCommandPalette = useCallback(() => setCommandPaletteOpen((v) => !v), []);
@@ -106,8 +117,18 @@ export function ToolStoreProvider({ children }: { children: React.ReactNode }) {
       commandPaletteOpen,
       toggleCommandPalette,
       setCommandPaletteOpen,
+      processMode,
+      setProcessMode,
     }),
-    [activeTool, selectedNode, codePanelOpen, commandPaletteOpen, toggleCodePanel, toggleCommandPalette]
+    [
+      activeTool,
+      selectedNode,
+      codePanelOpen,
+      commandPaletteOpen,
+      toggleCodePanel,
+      toggleCommandPalette,
+      processMode,
+    ]
   );
 
   return <ToolStoreContext.Provider value={value}>{children}</ToolStoreContext.Provider>;

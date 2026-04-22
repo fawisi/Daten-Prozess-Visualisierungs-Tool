@@ -11,6 +11,13 @@ import { DbmlStore, diagramToDbml, rawDatabaseToDiagram } from './dbml-store.js'
 import { ProcessStore } from './bpmn/store.js';
 import { DiagramSchema } from './schema.js';
 import { ProcessSchema } from './bpmn/schema.js';
+import { loadModeSidecar, saveModeSidecar } from './mode-sidecar.js';
+import { inferProcessMode, bpmnOnlyNodeIds } from './bpmn/mode-heuristic.js';
+import { z } from 'zod';
+
+const ModeRequestSchema = z.object({
+  mode: z.enum(['simple', 'bpmn']),
+});
 import { toMermaid } from './export/mermaid.js';
 import { processToMermaid } from './bpmn/export-mermaid.js';
 import { derivePositionsPath, prunePositions } from './positions.js';
@@ -217,6 +224,77 @@ async function registerBpmnRoutes(app: FastifyInstance, resolver: WorkspaceResol
         type: `${PROBLEM_BASE}/bpmn-load-failed`,
         title: 'BPMN load failed',
         detail: 'Could not read the BPMN document for this workspace. Check server logs.',
+      });
+      return reply;
+    }
+  });
+
+  app.get('/api/workspace/:workspaceId/bpmn/mode', async (req, reply) => {
+    const { workspaceId } = req.params as { workspaceId: string };
+    const { bpmnPath } = await resolver(workspaceId);
+    try {
+      const store = new ProcessStore(bpmnPath);
+      const sidecar = await loadModeSidecar(bpmnPath);
+      if (sidecar?.kind === 'bpmn') {
+        return { ok: true, mode: sidecar.mode, source: 'sidecar' as const };
+      }
+      // Heuristic-fallback for v1.0 files: if the schema contains BPMN-only
+      // elements, default to 'bpmn' mode (compat); otherwise 'simple'.
+      const process = await store.load();
+      return {
+        ok: true,
+        mode: inferProcessMode(process),
+        source: 'heuristic' as const,
+      };
+    } catch (err) {
+      app.log.error({ err, workspaceId }, 'BPMN mode load failed');
+      problem(reply, 500, {
+        type: `${PROBLEM_BASE}/bpmn-mode-load-failed`,
+        title: 'BPMN mode sidecar load failed',
+        detail: (err as Error).message,
+      });
+      return reply;
+    }
+  });
+
+  app.put('/api/workspace/:workspaceId/bpmn/mode', async (req, reply) => {
+    const { workspaceId } = req.params as { workspaceId: string };
+    // Parse-first-then-act: never trust the wire. Zod-narrowing beats
+    // the ad-hoc `as { mode?: string }` cast that would let an invalid
+    // string sneak through (kieran-review P1 N2).
+    const parsed = ModeRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      problem(reply, 400, {
+        type: `${PROBLEM_BASE}/bpmn-mode-invalid`,
+        title: 'Invalid mode',
+        detail: "Expected { mode: 'simple' | 'bpmn' } in request body.",
+      });
+      return reply;
+    }
+    const { bpmnPath } = await resolver(workspaceId);
+    await saveModeSidecar(bpmnPath, {
+      kind: 'bpmn',
+      mode: parsed.data.mode,
+      version: '1.1',
+    });
+    return { ok: true, mode: parsed.data.mode };
+  });
+
+  // Hidden-element count — used by the PropertiesPanel to surface
+  // "N BPMN-only elements are hidden" when in simple mode.
+  app.get('/api/workspace/:workspaceId/bpmn/hidden-elements', async (req, reply) => {
+    const { workspaceId } = req.params as { workspaceId: string };
+    const { bpmnPath } = await resolver(workspaceId);
+    try {
+      const store = new ProcessStore(bpmnPath);
+      const process = await store.load();
+      return { ok: true, hiddenIds: bpmnOnlyNodeIds(process) };
+    } catch (err) {
+      app.log.error({ err, workspaceId }, 'BPMN hidden-elements failed');
+      problem(reply, 500, {
+        type: `${PROBLEM_BASE}/bpmn-hidden-elements-failed`,
+        title: 'Could not compute hidden elements',
+        detail: (err as Error).message,
       });
       return reply;
     }

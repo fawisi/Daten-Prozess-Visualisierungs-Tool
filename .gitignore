@@ -2,5 +2,12 @@ node_modules/
 dist/
 *.erd.json
 *.erd.pos.json
+*.erd.status.json
 *.bpmn.json
 *.bpmn.pos.json
+*.bpmn.mode.json
+*.landscape.json
+*.landscape.pos.json
+*.landscape.mode.json
+.claude/scheduled_tasks.lock
+.claude/*.lock
