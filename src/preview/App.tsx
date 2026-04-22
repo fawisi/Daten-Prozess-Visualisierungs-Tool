@@ -96,32 +96,38 @@ function ErdCanvas({
   canvasRef: React.MutableRefObject<CanvasHandles | null>;
   onSelect: (node: SelectedNode | null) => void;
 }) {
+  const api = useApiConfig();
   const sync = useDiagramSync();
   const { nodes, edges, status, isEmpty, onNodesChange } = sync;
 
   useEffect(() => {
+    const erdSourceUrl = api.endpoints.erdSource;
+    const authHeader = api.endpoints.authHeader;
     canvasRef.current = {
       applyAutoLayout: sync.applyAutoLayout,
       snapshotPositions: sync.snapshotPositions,
       applyPositions: sync.applyPositions,
-      sourceUrl: '/__viso-api/source',
+      sourceUrl: erdSourceUrl,
       language: 'json',
       sourceTitle: 'schema.erd.json',
       refreshSource: async () => {
-        const res = await fetch('/__viso-api/source');
+        const res = await fetch(erdSourceUrl, authHeader ? { headers: { Authorization: authHeader } } : undefined);
         return res.text();
       },
       putSource: async (text: string) => {
-        const res = await fetch('/__viso-api/source', {
+        const res = await fetch(erdSourceUrl, {
           method: 'PUT',
-          headers: { 'Content-Type': 'text/plain' },
+          headers: {
+            'Content-Type': 'text/plain',
+            ...(authHeader ? { Authorization: authHeader } : {}),
+          },
           body: text,
         });
         if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       },
       validateSource: erdJsonValidate,
     };
-  }, [sync, canvasRef]);
+  }, [sync, canvasRef, api]);
 
   const onNodeClick = useCallback<NodeMouseHandler>(
     (_, node) => {
@@ -170,36 +176,44 @@ function ErdCanvas({
 function BpmnCanvas({
   canvasRef,
   onSelect,
+  onPaneClick,
 }: {
   canvasRef: React.MutableRefObject<CanvasHandles | null>;
   onSelect: (node: SelectedNode | null) => void;
+  onPaneClick?: (flowPos: { x: number; y: number }) => void;
 }) {
+  const api = useApiConfig();
   const sync = useProcessSync();
   const { nodes, edges, status, isEmpty, onNodesChange } = sync;
 
   useEffect(() => {
+    const bpmnSourceUrl = api.endpoints.bpmnSource;
+    const authHeader = api.endpoints.authHeader;
     canvasRef.current = {
       applyAutoLayout: sync.applyAutoLayout,
       snapshotPositions: sync.snapshotPositions,
       applyPositions: sync.applyPositions,
-      sourceUrl: '/__viso-api/bpmn/source',
+      sourceUrl: bpmnSourceUrl,
       language: 'json',
       sourceTitle: 'process.bpmn.json',
       refreshSource: async () => {
-        const res = await fetch('/__viso-api/bpmn/source');
+        const res = await fetch(bpmnSourceUrl, authHeader ? { headers: { Authorization: authHeader } } : undefined);
         return res.text();
       },
       putSource: async (text: string) => {
-        const res = await fetch('/__viso-api/bpmn/source', {
+        const res = await fetch(bpmnSourceUrl, {
           method: 'PUT',
-          headers: { 'Content-Type': 'text/plain' },
+          headers: {
+            'Content-Type': 'text/plain',
+            ...(authHeader ? { Authorization: authHeader } : {}),
+          },
           body: text,
         });
         if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       },
       validateSource: bpmnValidate,
     };
-  }, [sync, canvasRef]);
+  }, [sync, canvasRef, api]);
 
   const onNodeClick = useCallback<NodeMouseHandler>(
     (_, node) => {
@@ -213,6 +227,22 @@ function BpmnCanvas({
     [onSelect]
   );
 
+  const handlePaneClick = useCallback(
+    (evt: React.MouseEvent<HTMLDivElement>) => {
+      if (onPaneClick) {
+        // ReactFlow does not expose the project helper outside its hook, so
+        // approximate with the raw pane offset. The position writer
+        // overlays ELK / user-placed positions on next load; this is good
+        // enough for a first spawn.
+        const bounds = (evt.currentTarget as HTMLElement).getBoundingClientRect();
+        onPaneClick({ x: evt.clientX - bounds.left, y: evt.clientY - bounds.top });
+      } else {
+        onSelect(null);
+      }
+    },
+    [onPaneClick, onSelect]
+  );
+
   return (
     <div className="relative h-full w-full">
       <ReactFlow
@@ -220,7 +250,7 @@ function BpmnCanvas({
         edges={edges}
         onNodesChange={onNodesChange}
         onNodeClick={onNodeClick}
-        onPaneClick={() => onSelect(null)}
+        onPaneClick={handlePaneClick}
         nodeTypes={bpmnNodeTypes}
         edgeTypes={bpmnEdgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
@@ -273,7 +303,7 @@ function EditorShell({
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [sourceText, setSourceText] = useState<string>('');
   const canvasRef = useRef<CanvasHandles | null>(null);
-  const { selectedNode, setSelectedNode, codePanelOpen, setCommandPaletteOpen, toggleCodePanel } =
+  const { activeTool, setActiveTool, selectedNode, setSelectedNode, codePanelOpen, setCommandPaletteOpen, toggleCodePanel } =
     useToolStore();
   const history = useHistory<Record<string, { x: number; y: number }>>();
 
@@ -484,10 +514,73 @@ function EditorShell({
 
   useHistoryShortcuts({ onUndo: handleUndo, onRedo: handleRedo });
 
+  const handleAddNodeAt = useCallback(
+    async (type: 'start-event' | 'end-event' | 'task' | 'gateway', pos: { x: number; y: number }) => {
+      if (readOnly) return;
+      const handles = canvasRef.current;
+      if (!handles) return;
+      const raw = await handles.refreshSource();
+      let doc: { nodes: Record<string, Record<string, unknown>>; flows: unknown[]; format?: string };
+      try {
+        doc = JSON.parse(raw);
+      } catch {
+        doc = { format: 'viso-bpmn-v1', nodes: {}, flows: [] };
+      }
+      if (!doc.nodes) doc.nodes = {};
+      if (!doc.flows) doc.flows = [];
+      const baseId = typePrefix(type);
+      let suffix = 1;
+      let id = `${baseId}_${suffix}`;
+      while (doc.nodes[id]) {
+        suffix += 1;
+        id = `${baseId}_${suffix}`;
+      }
+      doc.nodes[id] = {
+        type,
+        label: defaultLabel(type),
+        ...(type === 'gateway' ? { gatewayType: 'exclusive' } : {}),
+      };
+      await handles.putSource(JSON.stringify(doc, null, 2));
+
+      // Persist the clicked pane position so the new node lands where the
+      // user clicked instead of at 0,0 from the ELK pass.
+      try {
+        const posUrl = api.endpoints.bpmnPositions;
+        const current = await fetch(posUrl).then((r) => (r.ok ? r.json() : {}));
+        await fetch(posUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
+          },
+          body: JSON.stringify({ ...current, [id]: pos }),
+        });
+      } catch {
+        /* positions are a nice-to-have; surface failures via the next reload */
+      }
+
+      // Reset the tool so subsequent clicks don't keep spawning nodes.
+      setActiveTool('pointer');
+    },
+    [readOnly, api, setActiveTool]
+  );
+
+  const bpmnPaneClick = useMemo(() => {
+    if (readOnly) return undefined;
+    if (activeTool === 'start-event' || activeTool === 'end-event' || activeTool === 'task' || activeTool === 'gateway') {
+      return (pos: { x: number; y: number }) => handleAddNodeAt(activeTool, pos);
+    }
+    return undefined;
+  }, [activeTool, handleAddNodeAt, readOnly]);
+
   const actions = useMemo(
     () =>
       buildDefaultActions({
-        onAddNode: (type) => window.alert(`"Add ${type}" — wiring via set_bpmn lands in Phase 5.`),
+        onAddNode: (type) => {
+          if (type === 'start-event' || type === 'end-event' || type === 'task' || type === 'gateway') {
+            setActiveTool(type);
+          }
+        },
         onExport: handleExport,
         onToggleCode: toggleCodePanel,
         onAutoLayout: handleAutoLayout,
@@ -495,7 +588,7 @@ function EditorShell({
         onRedo: handleRedo,
         onSwitchDiagram: files.length > 1 ? () => setCommandPaletteOpen(true) : undefined,
       }),
-    [handleExport, toggleCodePanel, handleAutoLayout, handleUndo, handleRedo, files.length, setCommandPaletteOpen]
+    [handleExport, toggleCodePanel, handleAutoLayout, handleUndo, handleRedo, files.length, setCommandPaletteOpen, setActiveTool]
   );
 
   const fileName = activeFile?.name ?? null;
@@ -521,7 +614,7 @@ function EditorShell({
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 min-h-0 relative">
             {diagramType === 'bpmn' ? (
-              <BpmnCanvas canvasRef={canvasRef} onSelect={setSelectedNode} />
+              <BpmnCanvas canvasRef={canvasRef} onSelect={setSelectedNode} onPaneClick={bpmnPaneClick} />
             ) : diagramType === 'erd' ? (
               <ErdCanvas canvasRef={canvasRef} onSelect={setSelectedNode} />
             ) : (
@@ -565,6 +658,32 @@ function bpmnExportBase(bpmnPut: string | null): string {
 function erdExportBase(erdPut: string | null): string {
   if (!erdPut) return '';
   return `${erdPut}/export`;
+}
+
+function typePrefix(type: 'start-event' | 'end-event' | 'task' | 'gateway'): string {
+  switch (type) {
+    case 'start-event':
+      return 'start';
+    case 'end-event':
+      return 'end';
+    case 'task':
+      return 'task';
+    case 'gateway':
+      return 'gateway';
+  }
+}
+
+function defaultLabel(type: 'start-event' | 'end-event' | 'task' | 'gateway'): string {
+  switch (type) {
+    case 'start-event':
+      return 'Start';
+    case 'end-event':
+      return 'End';
+    case 'task':
+      return 'Neuer Task';
+    case 'gateway':
+      return 'Entscheidung?';
+  }
 }
 
 function CanvasEmpty() {
