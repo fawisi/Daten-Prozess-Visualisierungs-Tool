@@ -28,6 +28,8 @@
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
     "@dbml/core": "^7.1.1",
+    "@fastify/cors": "^11.2.0",
+    "@fastify/websocket": "^11.2.0",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-label": "^2.1.8",
@@ -41,6 +43,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "fastify": "^5.8.5",
     "lucide-react": "^1.7.0",
     "radix-ui": "^1.4.3",
     "react-resizable-panels": "^4.8.0",

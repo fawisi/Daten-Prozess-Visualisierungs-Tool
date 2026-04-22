@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { runMigrateCli } from './migrate-cli.js';
 import { runInitCli } from './init-cli.js';
 import { startMcpServer } from './server.js';
+import { startHttpServer } from './http-adapter.js';
 
-const SUBCOMMANDS = ['serve', 'migrate', 'init', 'export', 'stdio'] as const;
+const SUBCOMMANDS = ['serve', 'migrate', 'init', 'export', 'stdio', 'http'] as const;
 type Subcommand = (typeof SUBCOMMANDS)[number];
 
 async function main(): Promise<number> {
@@ -29,6 +30,8 @@ async function main(): Promise<number> {
       return runStdio(rest);
     case 'serve':
       return runServe(rest);
+    case 'http':
+      return runHttp(rest);
     case 'migrate':
       return runMigrateCli(rest);
     case 'init':
@@ -39,6 +42,58 @@ async function main(): Promise<number> {
       );
       return 2;
   }
+}
+
+async function runHttp(argv: string[]): Promise<number> {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      port: { type: 'string', short: 'p', default: '4000' },
+      host: { type: 'string', default: '127.0.0.1' },
+      file: { type: 'string', default: './schema.dbml' },
+      'bpmn-file': { type: 'string', default: './process.bpmn.json' },
+    },
+    strict: false,
+  });
+  const port = Number.parseInt(String(values.port), 10);
+  if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+    process.stderr.write(`Invalid --port "${values.port}". Expected an integer between 1 and 65535.\n`);
+    return 2;
+  }
+  try {
+    const app = await startHttpServer(
+      port,
+      {
+        erdFile: values.file as string,
+        bpmnFile: values['bpmn-file'] as string,
+      },
+      values.host as string
+    );
+    process.stderr.write(
+      `viso-mcp HTTP adapter listening on http://${values.host}:${port}\n` +
+        '  GET    /api/workspace/:id/bpmn\n' +
+        '  PUT    /api/workspace/:id/bpmn\n' +
+        '  POST   /api/workspace/:id/bpmn/nodes\n' +
+        '  DELETE /api/workspace/:id/bpmn/nodes/:nodeId\n' +
+        '  POST   /api/workspace/:id/bpmn/flows\n' +
+        '  DELETE /api/workspace/:id/bpmn/flows?from=&to=\n' +
+        '  GET    /api/workspace/:id/bpmn/export?format=json|mermaid\n' +
+        '  GET    /api/workspace/:id/erd\n' +
+        '  PUT    /api/workspace/:id/erd\n' +
+        '  GET    /api/workspace/:id/erd/export?format=dbml|mermaid|sql|json\n' +
+        '  WS     /api/workspace/:id/events\n'
+    );
+    const shutdown = async () => {
+      await app.close();
+      process.exit(0);
+    };
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+  } catch (err) {
+    process.stderr.write(`HTTP server failed to start: ${(err as Error).message}\n`);
+    return 1;
+  }
+  return 0;
 }
 
 async function runStdio(argv: string[]): Promise<number> {
@@ -60,6 +115,18 @@ async function runStdio(argv: string[]): Promise<number> {
 }
 
 async function runServe(argv: string[]): Promise<number> {
+  // `serve --http <port>` is an alias for `http --port <port>` so that the
+  // hub-integration docs (which standardised on `viso-mcp serve --http 4000`)
+  // keep working without a separate install pattern.
+  const httpFlagIndex = argv.findIndex((a) => a === '--http');
+  if (httpFlagIndex !== -1) {
+    const rest = [...argv];
+    const portArg = rest[httpFlagIndex + 1];
+    rest.splice(httpFlagIndex, portArg && !portArg.startsWith('-') ? 2 : 1);
+    if (portArg && !portArg.startsWith('-')) rest.unshift('--port', portArg);
+    return runHttp(rest);
+  }
+
   const positional = argv.filter((a) => !a.startsWith('-'));
   const fileArg = positional[0] || './schema.dbml';
   const absFile = resolve(fileArg);
@@ -103,6 +170,9 @@ Usage:
 
   viso-mcp serve  [file.dbml]
       Start the browser preview (Vite).
+
+  viso-mcp http   [--port 4000] [--host 127.0.0.1] [--file ...] [--bpmn-file ...]
+      Start the HTTP API adapter (Fastify) for hub integrations.
 
   viso-mcp export <format>
       (placeholder — ships in v1.1)

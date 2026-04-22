@@ -5,6 +5,7 @@ export default defineConfig([
     entry: {
       cli: 'src/cli.ts',
       server: 'src/server.ts',
+      'http-adapter': 'src/http-adapter.ts',
       'export-mermaid': 'src/export/mermaid-cli.ts',
     },
     format: ['cjs', 'esm'],
