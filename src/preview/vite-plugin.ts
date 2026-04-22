@@ -292,6 +292,18 @@ export function visoPlugin(
             files.push({ name: name + '.bpmn', path: bpmnSchemaPath.split('/').pop(), type: 'bpmn' });
           } catch {}
 
+          // Check if landscape file exists (P2.1).
+          try {
+            await readFile(landscapeSchemaPath, 'utf-8');
+            const name =
+              landscapeSchemaPath.split('/').pop()?.replace('.landscape.json', '') ?? 'landscape';
+            files.push({
+              name: name + '.landscape',
+              path: landscapeSchemaPath.split('/').pop(),
+              type: 'landscape',
+            });
+          } catch {}
+
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify(files));
           return;

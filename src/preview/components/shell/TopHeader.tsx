@@ -6,7 +6,7 @@ import { useTheme } from '@/state/useTheme.js';
 import { useI18n } from '@/i18n/useI18n.js';
 import { cn } from '@/lib/utils.js';
 
-export type ExportFormat = 'mermaid' | 'sql' | 'dbml' | 'svg' | 'png';
+export type ExportFormat = 'mermaid' | 'sql' | 'dbml' | 'svg' | 'png' | 'bundle';
 
 interface TopHeaderProps {
   fileName: string | null;
@@ -26,6 +26,7 @@ interface TopHeaderProps {
 }
 
 const EXPORT_OPTION_IDS: { id: ExportFormat; hint: string }[] = [
+  { id: 'bundle', hint: '.zip' },
   { id: 'mermaid', hint: '.md' },
   { id: 'sql', hint: '.sql' },
   { id: 'dbml', hint: '.dbml' },

@@ -9,6 +9,7 @@ import { ProcessStore } from './bpmn/store.js';
 import { registerProcessTools } from './bpmn/tools.js';
 import { LandscapeStore } from './landscape/store.js';
 import { registerLandscapeTools } from './landscape/tools.js';
+import { registerBundleTools } from './bundle/tools.js';
 import type { ErdStore } from './erd-store-interface.js';
 
 export interface McpServerOptions {
@@ -34,6 +35,7 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   registerTools(server, erdStore);
   registerProcessTools(server, bpmnStore);
   registerLandscapeTools(server, landscapeStore);
+  registerBundleTools(server, { erdStore, bpmnStore, landscapeStore });
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

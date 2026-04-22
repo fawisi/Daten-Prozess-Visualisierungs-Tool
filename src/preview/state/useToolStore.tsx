@@ -3,7 +3,7 @@ import type { ProcessMode } from '../../bpmn/mode-heuristic.js';
 
 export type Tool = 'pointer' | 'pan' | 'start-event' | 'end-event' | 'task' | 'gateway';
 
-export type DiagramType = 'erd' | 'bpmn';
+export type DiagramType = 'erd' | 'bpmn' | 'landscape';
 
 // Re-export so call sites can import from one place; the type itself
 // is declared alongside the heuristic that produces it (kieran N4).

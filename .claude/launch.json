@@ -7,8 +7,9 @@
       "runtimeArgs": ["vite", "--config", "vite.config.ts"],
       "port": 5555,
       "env": {
-        "VISO_FILE": "./schema.erd.json",
-        "VISO_BPMN_FILE": "./process.bpmn.json"
+        "VISO_FILE": "./test-schema.erd.json",
+        "VISO_BPMN_FILE": "./process.bpmn.json",
+        "VISO_LANDSCAPE_FILE": "./landscape.landscape.json"
       }
     }
   ]

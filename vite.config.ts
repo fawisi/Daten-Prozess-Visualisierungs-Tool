@@ -20,6 +20,7 @@ export default defineConfig({
     visoPlugin({
       erdFile: process.env.VISO_FILE || process.env.DATEN_VIZ_FILE || './schema.erd.json',
       bpmnFile: process.env.VISO_BPMN_FILE || process.env.DATEN_VIZ_BPMN_FILE || './process.bpmn.json',
+      landscapeFile: process.env.VISO_LANDSCAPE_FILE || './landscape.landscape.json',
     }),
   ],
   resolve: {

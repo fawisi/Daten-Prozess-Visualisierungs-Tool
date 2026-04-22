@@ -623,14 +623,22 @@ Blueprint.
       + `'architecture-beta'` (sekundaer, icon-rich preview).
 - [x] 23 neue Tests grün (schema + export-mermaid). 173 total.
 
-**P2.1 (deferred, follows as separate branch — plan R8 Phase-Split):**
-- [ ] Canvas-Renderer (`src/preview/components/landscape/`) mit 7
-      Node-Components (Person, System, External, Container, Database,
-      Cloud, Boundary).
-- [ ] `useLandscapeSync`-Hook + `VisoEditor` `diagramType: 'landscape'`
-      Union-Erweiterung.
-- [ ] Handoff-Bundle-Export (JSZip, deterministisch) + `import_bundle`-Tool.
-- [ ] Round-Trip Export/Import Test.
+**P2.1 (shipped on feat/v1.1-p2.1-canvas-bundle):**
+- [x] Canvas-Renderer (`src/preview/components/landscape/`) — einzelne
+      parameterisierte `LandscapeNode` deckt alle 7 C4-Kinds (Person,
+      System, External, Container, Database, Cloud, Boundary) plus
+      `LandscapeRelationEdge`. Plan R1: memo + NodeProps typed.
+- [x] `useLandscapeSync`-Hook (spiegelt `useProcessSync`).
+- [x] `VisoEditor` `diagramType: 'landscape'` Union; `ApiEndpoints`
+      erweitert um Landscape-URLs; Vite-Plugin files-list zeigt landscape.
+- [x] Handoff-Bundle-Export (`src/bundle/{manifest,serialize}.ts`):
+      deterministisch (STORE + UNIX + fixed date, R3), security-gated
+      (Entry-Whitelist, ≤ 5 MiB, ≤ 20 Entries, R2).
+- [x] `export_bundle` + `import_bundle` MCP-Tools (`src/bundle/tools.ts`)
+      mit `onConflict` ('rename' | 'overwrite' | 'abort').
+- [x] Round-Trip Tests (8 serialize + 4 tool-level). 185 total.
+- [x] UI verifiziert in Preview: 7-Kind-Palette + labelled relations +
+      Status-Badge + Handoff-Paket in Export-Dropdown.
 
 **Geschätzter Effort:** ~75 h.
 
@@ -1000,8 +1008,10 @@ Zusätzlich aus der Parity-Analyse (amended 2026-04-22 nach Agent-Native-Review)
 - [x] 12 Landscape-MCP-Tools (atomar + bulk + mode + parent) funktional.
 - [x] L1-Nodes: Person, System, External; Relationen mit Label + Technology.
       L2-Nodes (Container, Database, Cloud, Boundary) schon im Schema.
-- [ ] Handoff-Bundle — deferred to P2.1.
-- [ ] Round-Trip Export → Import — deferred to P2.1.
+- [x] Handoff-Bundle — shipped in P2.1 (deterministic JSZip + schema-
+      whitelisted Import + round-trip tests).
+- [x] Round-Trip Export → Import — shipped in P2.1 (12 tests across
+      serialize + tools layers).
 
 #### P3 — L2 + Narrative
 - [ ] L2-Nodes: Container, Database, Cloud, Boundary mit Containment.

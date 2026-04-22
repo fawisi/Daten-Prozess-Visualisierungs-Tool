@@ -22,10 +22,13 @@ import { EndEventNode } from '@/components/bpmn/EndEventNode.js';
 import { TaskNode } from '@/components/bpmn/TaskNode.js';
 import { GatewayNode } from '@/components/bpmn/GatewayNode.js';
 import { SequenceFlowEdge } from '@/components/bpmn/SequenceFlowEdge.js';
+import { LandscapeNode } from '@/components/landscape/LandscapeNode.js';
+import { LandscapeRelationEdge } from '@/components/landscape/LandscapeRelationEdge.js';
 import { EmptyState } from '@/components/shared/EmptyState.js';
 import { StatusIndicator } from '@/components/shared/StatusIndicator.js';
 import { useDiagramSync } from '@/hooks/useDiagramSync.js';
 import { useProcessSync } from '@/hooks/useProcessSync.js';
+import { useLandscapeSync } from '@/hooks/useLandscapeSync.js';
 import { useHistory, useHistoryShortcuts } from '@/hooks/useHistory.js';
 import { useSpawnListener } from '@/hooks/usePaletteDrag.js';
 import {
@@ -38,6 +41,7 @@ import { useApiConfig } from '@/state/ApiConfig.js';
 import { I18nProvider, useI18n } from '@/i18n/useI18n.js';
 import { useTheme } from '@/state/useTheme.js';
 import { renderDiagramPng, renderDiagramSvg } from '@/export/render-diagram.js';
+import { buildBrowserBundle } from '@/export/bundle-browser.js';
 import { ProcessSchema, type Process } from '../bpmn/schema.js';
 
 // Stable references
@@ -50,6 +54,9 @@ const bpmnNodeTypes = {
   bpmnGateway: GatewayNode,
 };
 const bpmnEdgeTypes = { sequenceFlow: SequenceFlowEdge };
+// Module-scope — plan R1 requires stable identity across renders.
+const landscapeNodeTypes = { landscapeNode: LandscapeNode };
+const landscapeEdgeTypes = { landscapeRelation: LandscapeRelationEdge };
 
 const defaultEdgeOptions = {
   type: 'smoothstep' as const,
@@ -296,9 +303,111 @@ function BpmnCanvas({
   );
 }
 
+function LandscapeCanvas({
+  canvasRef,
+  onSelect,
+}: {
+  canvasRef: React.MutableRefObject<CanvasHandles | null>;
+  onSelect: (node: SelectedNode | null) => void;
+}) {
+  const api = useApiConfig();
+  const sync = useLandscapeSync();
+  const { nodes, edges, status, isEmpty, onNodesChange } = sync;
+
+  useEffect(() => {
+    const sourceUrl = api.endpoints.landscapeSource ?? api.endpoints.landscapeSchema ?? '';
+    const authHeader = api.endpoints.authHeader;
+    canvasRef.current = {
+      applyAutoLayout: sync.applyAutoLayout,
+      snapshotPositions: sync.snapshotPositions,
+      applyPositions: sync.applyPositions,
+      getNodes: () => nodes,
+      sourceUrl,
+      language: 'json',
+      sourceTitle: 'landscape.landscape.json',
+      refreshSource: async () => {
+        if (!sourceUrl) return '{}';
+        const res = await fetch(sourceUrl, authHeader ? { headers: { Authorization: authHeader } } : undefined);
+        return res.text();
+      },
+      putSource: async (text: string) => {
+        if (!api.endpoints.landscapeSource) return;
+        const res = await fetch(api.endpoints.landscapeSource, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'text/plain',
+            ...(authHeader ? { Authorization: authHeader } : {}),
+          },
+          body: text,
+        });
+        if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+      },
+      validateSource: landscapeJsonValidate,
+    };
+  }, [sync, canvasRef, api, nodes]);
+
+  const onNodeClick = useCallback<NodeMouseHandler>(
+    (_, node) => {
+      onSelect({
+        id: node.id,
+        type: node.type ?? 'landscapeNode',
+        diagramType: 'landscape',
+        data: node.data as Record<string, unknown>,
+      });
+    },
+    [onSelect]
+  );
+
+  return (
+    <div className="relative h-full w-full" data-viso-canvas-pane="landscape">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onNodeClick={onNodeClick}
+        onPaneClick={() => onSelect(null)}
+        nodeTypes={landscapeNodeTypes}
+        edgeTypes={landscapeEdgeTypes}
+        defaultEdgeOptions={defaultEdgeOptions}
+        fitView
+        fitViewOptions={{ padding: 0.2 }}
+        minZoom={0.1}
+        maxZoom={2}
+        proOptions={{ hideAttribution: true }}
+        connectionLineStyle={{ stroke: 'var(--edge-stroke-hover)' }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--canvas-grid-dot)" />
+        <MiniMap
+          style={{ background: 'var(--minimap-bg)', border: '1px solid var(--controls-border)', borderRadius: '6px' }}
+          nodeColor="var(--minimap-node)"
+          maskColor="rgba(11, 14, 20, 0.85)"
+        />
+        <Controls />
+      </ReactFlow>
+      {isEmpty && (
+        <EmptyState message="No landscape nodes yet. Use landscape_add_node to create them." />
+      )}
+      <StatusIndicator status={status} />
+    </div>
+  );
+}
+
+function landscapeJsonValidate(text: string): { ok: true } | { ok: false; message: string; line?: number } {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object') return { ok: false, message: 'Expected object' };
+    if (parsed.format !== 'viso-landscape-v1') {
+      return { ok: false, message: `Unexpected format "${parsed.format}"` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 interface EditorShellProps {
   readOnly?: boolean;
-  initialDiagramType?: 'bpmn' | 'erd';
+  initialDiagramType?: 'bpmn' | 'erd' | 'landscape';
   attachmentSlot?: PropertiesPanelProps['attachmentSlot'];
   attachmentEligibleTypes?: string[];
   onSelectionChange?: (node: SelectedNode | null) => void;
@@ -480,7 +589,7 @@ function EditorShell({
       const themeSnapshot = resolvedTheme;
 
       let body: Blob;
-      const filename = `${activeFile.name}.${format}`;
+      const filename = `${activeFile.name}.${format === 'bundle' ? 'zip' : format}`;
       const authHeaders = api.endpoints.authHeader
         ? { Authorization: api.endpoints.authHeader }
         : undefined;
@@ -526,6 +635,44 @@ function EditorShell({
             format === 'png'
               ? await renderDiagramPng(liveNodes, { theme: themeSnapshot })
               : await renderDiagramSvg(liveNodes, { theme: themeSnapshot });
+        } catch (err) {
+          window.alert(
+            t.export.error_http_fail({
+              status: 0,
+              detail: (err as Error).message,
+            })
+          );
+          return;
+        }
+      } else if (format === 'bundle') {
+        // Handoff-Bundle: source + positions + Mermaid rolled into a
+        // deterministic Zip. SVG/PNG skipped here for speed; call
+        // export_bundle via MCP if you need the raster snapshot.
+        const sourceUrl =
+          activeFile.type === 'bpmn'
+            ? api.endpoints.bpmnSource
+            : activeFile.type === 'landscape'
+              ? api.endpoints.landscapeSource ?? ''
+              : api.endpoints.erdSource;
+        const positionsUrl =
+          activeFile.type === 'bpmn'
+            ? api.endpoints.bpmnPositions
+            : activeFile.type === 'landscape'
+              ? api.endpoints.landscapePositions ?? null
+              : api.endpoints.erdPositions;
+        // Mermaid is HTTP-only on the adapter (no Vite endpoint today);
+        // when unavailable the bundle ships source-only.
+        const mermaidUrl = hubPutUrl ? `${hubPutUrl}/export?format=mermaid` : null;
+        try {
+          body = await buildBrowserBundle({
+            diagramType: activeFile.type,
+            diagramName: activeFile.name,
+            sourceUrl,
+            positionsUrl,
+            mermaidUrl,
+            authHeader: api.endpoints.authHeader,
+            toolVersion: '1.1.0-alpha',
+          });
         } catch (err) {
           window.alert(
             t.export.error_http_fail({
@@ -812,12 +959,22 @@ function EditorShell({
           <div
             className="flex-1 min-h-0 relative"
             role="list"
-            aria-label={diagramType === 'bpmn' ? 'BPMN process nodes' : diagramType === 'erd' ? 'ERD tables' : 'Empty canvas'}
+            aria-label={
+              diagramType === 'bpmn'
+                ? 'BPMN process nodes'
+                : diagramType === 'erd'
+                  ? 'ERD tables'
+                  : diagramType === 'landscape'
+                    ? 'System landscape nodes'
+                    : 'Empty canvas'
+            }
           >
             {diagramType === 'bpmn' ? (
               <BpmnCanvas canvasRef={canvasRef} onSelect={setSelectedNode} onPaneClick={bpmnPaneClick} />
             ) : diagramType === 'erd' ? (
               <ErdCanvas canvasRef={canvasRef} onSelect={setSelectedNode} />
+            ) : diagramType === 'landscape' ? (
+              <LandscapeCanvas canvasRef={canvasRef} onSelect={setSelectedNode} />
             ) : (
               <CanvasEmpty />
             )}
