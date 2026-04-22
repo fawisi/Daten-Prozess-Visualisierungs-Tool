@@ -48,6 +48,8 @@ export interface HttpAdapterOptions {
   authValidator?: AuthValidator;
   /** CORS allow-list; default: `http://localhost:3000,http://localhost:3001`. */
   allowedOrigins?: string[];
+  /** Request body size limit in bytes. Default 256 KiB. */
+  bodyLimit?: number;
   /** When true, `fastify` boot logs are silenced (tests, production hubs). */
   quiet?: boolean;
 }
@@ -86,6 +88,18 @@ function parseAllowedOrigins(env: string | undefined, override?: string[]): stri
     .filter((s) => s.length > 0);
 }
 
+/** Cap request bodies to 256 KiB. DBML files that exceed this are rejected
+ *  before the parser runs, killing an obvious DoS vector (unbounded nested
+ *  grammar on a multi-MiB input). Hubs with legitimate large schemas can
+ *  raise via {@link HttpAdapterOptions.bodyLimit}. */
+const DEFAULT_BODY_LIMIT = 256 * 1024;
+
+/** Cap DBML source strings before feeding them to the @dbml/core parser.
+ *  The parser is recursive-descent; deeply nested inputs at the body
+ *  limit still eat event-loop time. 200 KiB is an order of magnitude more
+ *  than a realistic human-edited schema. */
+const DBML_INPUT_LIMIT = 200 * 1024;
+
 export async function createHttpServer(
   options: HttpAdapterOptions = {}
 ): Promise<FastifyInstance> {
@@ -95,6 +109,7 @@ export async function createHttpServer(
   const allowedOrigins = parseAllowedOrigins(process.env.VISO_ALLOWED_ORIGINS, options.allowedOrigins);
 
   const app = Fastify({
+    bodyLimit: options.bodyLimit ?? DEFAULT_BODY_LIMIT,
     logger: options.quiet
       ? false
       : {
@@ -155,10 +170,16 @@ export async function createHttpServer(
   app.setErrorHandler((err, req, reply) => {
     const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
     app.log.error({ err, url: req.url }, 'unhandled error');
+    // 4xx echoes the message back so clients can fix their input; 5xx is
+    // generic so filesystem paths, stack traces, and internal state don't
+    // leak to the hub's browser tab.
+    const detail = status >= 500
+      ? 'The server could not complete this request. Check server logs for details.'
+      : err.message;
     problem(reply, status, {
       type: `${PROBLEM_BASE}/internal`,
-      title: err.name || 'Internal Server Error',
-      detail: err.message,
+      title: err.name || (status >= 500 ? 'Internal Server Error' : 'Bad Request'),
+      detail,
     });
   });
 
@@ -191,10 +212,11 @@ async function registerBpmnRoutes(app: FastifyInstance, resolver: WorkspaceResol
       const process = await store.load();
       return { ok: true, data: process };
     } catch (err) {
+      app.log.error({ err, workspaceId }, 'BPMN load failed');
       problem(reply, 500, {
         type: `${PROBLEM_BASE}/bpmn-load-failed`,
         title: 'BPMN load failed',
-        detail: (err as Error).message,
+        detail: 'Could not read the BPMN document for this workspace. Check server logs.',
       });
       return reply;
     }
@@ -457,10 +479,11 @@ async function registerErdRoutes(app: FastifyInstance, resolver: WorkspaceResolv
       const diagram = await store.load();
       return { ok: true, data: diagram };
     } catch (err) {
+      app.log.error({ err, workspaceId }, 'ERD load failed');
       problem(reply, 500, {
         type: `${PROBLEM_BASE}/erd-load-failed`,
         title: 'ERD load failed',
-        detail: (err as Error).message,
+        detail: 'Could not read the ERD document for this workspace. Check server logs.',
       });
       return reply;
     }
@@ -474,6 +497,14 @@ async function registerErdRoutes(app: FastifyInstance, resolver: WorkspaceResolv
         type: `${PROBLEM_BASE}/erd-missing-body`,
         title: 'Missing DBML payload',
         detail: 'Expected JSON body with `dbml` (string) field holding the complete DBML document.',
+      });
+      return reply;
+    }
+    if (body.dbml.length > DBML_INPUT_LIMIT) {
+      problem(reply, 413, {
+        type: `${PROBLEM_BASE}/dbml-too-large`,
+        title: 'DBML document too large',
+        detail: `DBML payload is ${body.dbml.length} bytes; the server caps inputs at ${DBML_INPUT_LIMIT} bytes to protect the parser.`,
       });
       return reply;
     }
@@ -493,6 +524,8 @@ async function registerErdRoutes(app: FastifyInstance, resolver: WorkspaceResolv
 
     let diagram: Diagram;
     try {
+      // Safe cast: the result is validated via DiagramSchema.safeParse below;
+      // any shape mismatch turns into a 400 with Zod issues.
       diagram = rawDatabaseToDiagram(parsedRaw as Parameters<typeof rawDatabaseToDiagram>[0]);
     } catch (err) {
       problem(reply, 400, {
@@ -570,10 +603,11 @@ async function registerErdRoutes(app: FastifyInstance, resolver: WorkspaceResolv
         reply.header('content-type', 'text/plain; charset=utf-8');
         return sql;
       } catch (err) {
+        app.log.error({ err, workspaceId, dialect: d }, 'SQL export failed');
         problem(reply, 500, {
           type: `${PROBLEM_BASE}/erd-sql-export-failed`,
           title: 'SQL export failed',
-          detail: (err as Error).message,
+          detail: 'The DBML exporter could not render this schema. Check server logs.',
         });
         return reply;
       }
@@ -615,6 +649,13 @@ async function registerEventsRoute(app: FastifyInstance, resolver: WorkspaceReso
     const realBpmn = await safeRealpath(bpmnPath);
     const watcher = watch([erdPath, bpmnPath], { ignoreInitial: true });
     const clients = new Set<(msg: string) => void>();
+    let ready = false;
+    const readyPromise = new Promise<void>((resolve) => {
+      watcher.once('ready', () => {
+        ready = true;
+        resolve();
+      });
+    });
 
     const broadcast = (event: Record<string, unknown>) => {
       const payload = JSON.stringify(event);
@@ -630,7 +671,7 @@ async function registerEventsRoute(app: FastifyInstance, resolver: WorkspaceReso
       }
     });
 
-    const entry = { watcher, clients, bpmnPath, erdPath };
+    const entry = { watcher, clients, bpmnPath, erdPath, ready: () => readyPromise, isReady: () => ready };
     watchers.set(workspaceId, entry);
     return entry;
   }
@@ -647,18 +688,28 @@ async function registerEventsRoute(app: FastifyInstance, resolver: WorkspaceReso
       }
     };
     entry.clients.add(send);
+    // Wait for chokidar's initial scan so the hello message and the first
+    // `schema-changed` broadcast are separated by a deterministic boundary.
+    await entry.ready();
     send(JSON.stringify({ type: 'hello', workspaceId }));
 
     socket.on('close', () => {
       entry.clients.delete(send);
-      // Leave the watcher alive — other clients may still be subscribed.
+      // Release the inotify handle once the last client disconnects so a
+      // hub watching many workspaces doesn't slow-leak descriptors.
+      if (entry.clients.size === 0) {
+        watchers.delete(workspaceId);
+        entry.watcher.close().catch(() => {
+          /* already closed or never opened */
+        });
+      }
     });
   });
 
   app.addHook('onClose', async () => {
-    for (const { watcher } of watchers.values()) {
-      await watcher.close();
-    }
+    await Promise.all(
+      Array.from(watchers.values()).map((entry) => entry.watcher.close().catch(() => undefined))
+    );
     watchers.clear();
   });
 }

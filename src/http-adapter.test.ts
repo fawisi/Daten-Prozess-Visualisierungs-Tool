@@ -398,6 +398,8 @@ describe('HTTP adapter — WebSocket events', () => {
       ws.once('error', fail);
     });
 
+    // The hello arrives AFTER chokidar signals `ready`, so we can safely
+    // hook the change listener before mutating the file.
     const gotHello = new Promise<void>((res) => {
       ws.once('message', (raw) => {
         messages.push(JSON.parse(raw.toString()));
@@ -416,8 +418,6 @@ describe('HTTP adapter — WebSocket events', () => {
       });
     });
 
-    // Give chokidar a tick to attach before we mutate.
-    await new Promise((r) => setTimeout(r, 200));
     await writeFile(bpmnPath, await readFile(bpmnPath, 'utf-8') + '\n', 'utf-8');
 
     await Promise.race([
@@ -431,4 +431,70 @@ describe('HTTP adapter — WebSocket events', () => {
     expect(messages[0]).toEqual({ type: 'hello', workspaceId: 'ws1' });
     expect(messages.some((m) => (m as { type: string }).type === 'schema-changed')).toBe(true);
   }, 10000);
+});
+
+describe('HTTP adapter — auth gate isolation', () => {
+  it('keeps /health open while /api/workspace is gated', async () => {
+    const app = await buildApp({
+      authValidator: () => false, // reject everything
+    });
+    try {
+      const healthRes = await app.inject({ method: 'GET', url: '/health' });
+      expect(healthRes.statusCode).toBe(200);
+
+      const wsRes = await app.inject({ method: 'GET', url: '/api/workspace/ws1/bpmn' });
+      expect(wsRes.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('forwards the workspace id to the auth validator for every route', async () => {
+    const seen: Array<{ token: string | undefined; workspaceId: string }> = [];
+    const app = await buildApp({
+      authValidator: (token, workspaceId) => {
+        seen.push({ token, workspaceId });
+        return true;
+      },
+    });
+    try {
+      await app.inject({
+        method: 'GET',
+        url: '/api/workspace/ws-alpha/bpmn',
+        headers: { authorization: 'Bearer tok-1' },
+      });
+      await app.inject({
+        method: 'GET',
+        url: '/api/workspace/ws-beta/erd',
+        headers: { authorization: 'Bearer tok-2' },
+      });
+      expect(seen).toEqual([
+        { token: 'tok-1', workspaceId: 'ws-alpha' },
+        { token: 'tok-2', workspaceId: 'ws-beta' },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('HTTP adapter — body limits', () => {
+  it('rejects DBML payloads above the DBML cap with a 413 problem+json', async () => {
+    const app = await buildApp({ bodyLimit: 4 * 1024 * 1024 });
+    try {
+      // Build a DBML string over the 200 KiB cap but under the Fastify bodyLimit.
+      const big = 'Table t {\n  id uuid [pk]\n}\n'.repeat(10_000);
+      expect(big.length).toBeGreaterThan(200 * 1024);
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/workspace/ws1/erd',
+        payload: { dbml: big },
+      });
+      expect(res.statusCode).toBe(413);
+      const body = res.json() as { type: string };
+      expect(body.type).toBe('https://viso-mcp.dev/problems/dbml-too-large');
+    } finally {
+      await app.close();
+    }
+  });
 });

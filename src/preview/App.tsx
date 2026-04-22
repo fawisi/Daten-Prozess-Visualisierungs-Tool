@@ -29,6 +29,7 @@ import { useProcessSync } from '@/hooks/useProcessSync.js';
 import { useHistory, useHistoryShortcuts } from '@/hooks/useHistory.js';
 import { ToolStoreProvider, useToolStore, type SelectedNode } from '@/state/useToolStore.js';
 import { useApiConfig } from '@/state/ApiConfig.js';
+import type { Process } from '../bpmn/schema.js';
 
 // Stable references
 const erdNodeTypes = { table: TableNode };
@@ -387,10 +388,11 @@ function EditorShell({
       }
 
       let body: Blob;
-      let filename = `${activeFile.name}.${format}`;
+      const filename = `${activeFile.name}.${format}`;
       const authHeaders = api.endpoints.authHeader
         ? { Authorization: api.endpoints.authHeader }
         : undefined;
+      const hubPutUrl = activeFile.type === 'bpmn' ? api.endpoints.bpmnPut : api.endpoints.erdPut;
 
       if (format === 'json') {
         const text = await handles.refreshSource();
@@ -400,26 +402,25 @@ function EditorShell({
         const text = await handles.refreshSource();
         body = new Blob([text], { type: 'text/plain' });
       } else if (format === 'mermaid') {
-        const url = activeFile.type === 'bpmn'
-          ? `${bpmnExportBase(api.endpoints.bpmnPut)}?format=mermaid`
-          : `${erdExportBase(api.endpoints.erdPut)}?format=mermaid`;
-        if (url.startsWith('null?') || !url) {
+        if (!hubPutUrl) {
           window.alert('Mermaid export requires the HTTP adapter. Run `viso-mcp http` or configure `apiBaseUrl`.');
           return;
         }
-        const res = await fetch(url, authHeaders ? { headers: authHeaders } : undefined);
+        const res = await fetch(`${hubPutUrl}/export?format=mermaid`, authHeaders ? { headers: authHeaders } : undefined);
         if (!res.ok) {
           window.alert(`Mermaid export failed: ${res.status} ${res.statusText}`);
           return;
         }
         body = new Blob([await res.text()], { type: 'text/plain' });
       } else if (format === 'sql') {
-        const base = erdExportBase(api.endpoints.erdPut);
-        if (!base) {
+        if (!api.endpoints.erdPut) {
           window.alert('SQL export requires the HTTP adapter. Run `viso-mcp http` or configure `apiBaseUrl`.');
           return;
         }
-        const res = await fetch(`${base}?format=sql&dialect=postgres`, authHeaders ? { headers: authHeaders } : undefined);
+        const res = await fetch(
+          `${api.endpoints.erdPut}/export?format=sql&dialect=postgres`,
+          authHeaders ? { headers: authHeaders } : undefined
+        );
         if (!res.ok) {
           const detail = await res.text().catch(() => '');
           window.alert(`SQL export failed: ${res.status} ${res.statusText}\n${detail}`);
@@ -478,13 +479,19 @@ function EditorShell({
         await handles.putSource(JSON.stringify(doc, null, 2));
         return;
       }
-      // Hub mode — fetch, mutate, PUT.
+      // Hub mode — fetch, mutate, PUT. This is a read-modify-write cycle:
+      // concurrent edits on the same BPMN will see last-write-wins.
+      // Optimistic concurrency (ETag header) is Phase 6 work once two hub
+      // users actually collaborate.
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (api.endpoints.authHeader) headers.Authorization = api.endpoints.authHeader;
-      const currentRes = await fetch(api.endpoints.bpmnSchema, api.endpoints.authHeader ? { headers: { Authorization: api.endpoints.authHeader } } : undefined);
-      if (!currentRes.ok) throw new Error(`Fetch BPMN failed: ${currentRes.status}`);
-      const raw = await currentRes.json();
-      const processDoc = raw?.data ?? raw;
+      const currentRes = await fetch(
+        api.endpoints.bpmnSchema,
+        api.endpoints.authHeader ? { headers: { Authorization: api.endpoints.authHeader } } : undefined
+      );
+      if (!currentRes.ok) throw new Error(`Fetch BPMN failed: ${currentRes.status} ${currentRes.statusText}`);
+      const raw = (await currentRes.json()) as { data?: Process } | Process;
+      const processDoc: Process = 'data' in raw && raw.data ? raw.data : (raw as Process);
       const node = processDoc.nodes?.[id];
       if (!node) return;
       if (update.label !== undefined) node.label = update.label;
@@ -492,12 +499,19 @@ function EditorShell({
         if (update.description === '') delete node.description;
         else node.description = update.description;
       }
-      if (update.type !== undefined) node.type = update.type;
-      await fetch(bpmnPutUrl, {
+      if (update.type !== undefined) node.type = update.type as Process['nodes'][string]['type'];
+      const putRes = await fetch(bpmnPutUrl, {
         method: 'PUT',
         headers,
         body: JSON.stringify({ process: processDoc }),
       });
+      if (!putRes.ok) {
+        const detail = await putRes
+          .json()
+          .then((body: { detail?: string; title?: string }) => body?.detail ?? body?.title ?? `${putRes.status}`)
+          .catch(() => `${putRes.status} ${putRes.statusText}`);
+        throw new Error(`PropertiesPanel save failed: ${detail}`);
+      }
     },
     [activeFile, api, readOnly]
   );
@@ -543,20 +557,23 @@ function EditorShell({
       await handles.putSource(JSON.stringify(doc, null, 2));
 
       // Persist the clicked pane position so the new node lands where the
-      // user clicked instead of at 0,0 from the ELK pass.
-      try {
-        const posUrl = api.endpoints.bpmnPositions;
-        const current = await fetch(posUrl).then((r) => (r.ok ? r.json() : {}));
-        await fetch(posUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
-          },
-          body: JSON.stringify({ ...current, [id]: pos }),
-        });
-      } catch {
-        /* positions are a nice-to-have; surface failures via the next reload */
+      // user clicked instead of at 0,0 from the ELK pass.  The positions
+      // sidecar only exists in Vite mode (`/__viso-api/bpmn/positions`);
+      // hub adapters don't surface it yet, so skip the write and let ELK
+      // place the node on next load.
+      const isVitePositions = api.endpoints.bpmnPositions.startsWith('/__viso-api/');
+      if (isVitePositions) {
+        try {
+          const posUrl = api.endpoints.bpmnPositions;
+          const current = await fetch(posUrl).then((r) => (r.ok ? r.json() : {}));
+          await fetch(posUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...current, [id]: pos }),
+          });
+        } catch {
+          /* positions are a nice-to-have; ELK will reflow on next load */
+        }
       }
 
       // Reset the tool so subsequent clicks don't keep spawning nodes.

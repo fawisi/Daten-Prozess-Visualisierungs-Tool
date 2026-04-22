@@ -5,6 +5,7 @@ import type { Process, ProcessPositions } from '../../bpmn/schema.js';
 import type { ConnectionStatus } from '../components/shared/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
 import { useApiConfig } from '../state/ApiConfig.js';
+import { authInit, resolveWsUrl } from '../state/apiHelpers.js';
 
 const DEFAULT_WS_PATH = '/__viso-ws';
 const RECONNECT_INTERVAL = 2000;
@@ -87,8 +88,7 @@ export function useProcessSync() {
     let mounted = true;
 
     function connect() {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = resolveWsUrl(api.endpoints.wsUrl ?? DEFAULT_WS_PATH, protocol);
+      const wsUrl = resolveWsUrl(api.endpoints.wsUrl ?? DEFAULT_WS_PATH, window.location.protocol);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -203,17 +203,4 @@ export function useProcessSync() {
     snapshotPositions,
     savePositions,
   };
-}
-
-function authInit(authHeader: string | undefined): RequestInit | undefined {
-  if (!authHeader) return undefined;
-  return { headers: { Authorization: authHeader } };
-}
-
-function resolveWsUrl(wsPath: string, protocol: 'http:' | 'https:' | 'ws:' | 'wss:' | string): string {
-  if (/^wss?:\/\//.test(wsPath)) return wsPath;
-  if (/^https?:\/\//.test(wsPath)) {
-    return wsPath.replace(/^http/, 'ws');
-  }
-  return `${protocol}//${window.location.host}${wsPath}`;
 }

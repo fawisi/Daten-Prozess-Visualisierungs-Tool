@@ -85,8 +85,10 @@ export function ApiConfigProvider({
       bpmnPut: `${hubBase}/bpmn`,
       filesList: null,
       wsUrl: `${hubBase}/events`,
-      authHeader: authToken ? `Bearer ${authToken}` : undefined,
+      // Spread consumer overrides BEFORE the auth header so a partial
+      // `endpoints` prop cannot accidentally wipe authentication.
       ...endpoints,
+      authHeader: authToken ? `Bearer ${authToken}` : undefined,
     };
   }, [apiBaseUrl, workspaceId, authToken, endpoints]);
 
