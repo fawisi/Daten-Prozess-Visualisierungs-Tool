@@ -1,4 +1,5 @@
 import type { Process } from './schema.js';
+import { applyMermaidTheme, bpmnClassDefs } from '../theme.js';
 
 const NODE_SHAPE: Record<string, (id: string, label: string) => string> = {
   'start-event': (id, label) => `    ${id}(("${label}"))`,
@@ -7,7 +8,12 @@ const NODE_SHAPE: Record<string, (id: string, label: string) => string> = {
   'gateway': (id, label) => `    ${id}{"${label}"}`,
 };
 
-export function processToMermaid(process: Process): string {
+export interface MermaidExportOptions {
+  /** When provided, wraps the output in an `%%{init}%%` directive. */
+  theme?: 'light' | 'dark';
+}
+
+export function processToMermaid(process: Process, options: MermaidExportOptions = {}): string {
   const lines: string[] = ['flowchart LR'];
 
   // Sort node IDs for deterministic output
@@ -41,16 +47,23 @@ export function processToMermaid(process: Process): string {
     }
   }
 
-  // Add styles
+  // Apply shared TAFKA classDefs instead of inline hex colours so the
+  // export stays consistent with the React Flow canvas theme.
+  lines.push(...bpmnClassDefs());
   if (startNodes.length > 0) {
-    lines.push(`    style ${startNodes.join(',')} fill:#22C55E,stroke:#22C55E,color:#000`);
+    lines.push(`    class ${startNodes.join(',')} startEvent`);
   }
   if (endNodes.length > 0) {
-    lines.push(`    style ${endNodes.join(',')} fill:#EF4444,stroke:#EF4444,color:#fff`);
+    lines.push(`    class ${endNodes.join(',')} endEvent`);
   }
   if (gatewayNodes.length > 0) {
-    lines.push(`    style ${gatewayNodes.join(',')} fill:#F59E0B,stroke:#F59E0B,color:#000`);
+    lines.push(`    class ${gatewayNodes.join(',')} gateway`);
+  }
+  const taskNodes = nodeIds.filter((id) => process.nodes[id].type === 'task');
+  if (taskNodes.length > 0) {
+    lines.push(`    class ${taskNodes.join(',')} task`);
   }
 
-  return lines.join('\n') + '\n';
+  const body = lines.join('\n') + '\n';
+  return options.theme ? applyMermaidTheme(body, options.theme) : body;
 }

@@ -59,10 +59,25 @@ describe('processToMermaid', () => {
     expect(a).toBe(b);
   });
 
-  it('adds style classes for node types', () => {
+  it('emits TAFKA-themed classDefs and class directives for each node kind', () => {
     const output = processToMermaid(sampleProcess);
-    expect(output).toContain('style start fill:#22C55E');
-    expect(output).toContain('style end_fail,end_ok fill:#EF4444');
-    expect(output).toContain('style decision fill:#F59E0B');
+    expect(output).toContain('classDef startEvent fill:#10B981');
+    expect(output).toContain('classDef endEvent fill:#EF4444');
+    expect(output).toContain('classDef gateway fill:#F59E0B');
+    expect(output).toContain('classDef task fill:#FFFFFF');
+    expect(output).toContain('class start startEvent');
+    expect(output).toContain('class end_fail,end_ok endEvent');
+    expect(output).toContain('class decision gateway');
+    // Tasks are listed in sorted order: fulfill, reject, review
+    expect(output).toMatch(/class fulfill,reject,review task/);
+  });
+
+  it('wraps the body in %%{init}%% when theme option is provided', () => {
+    const output = processToMermaid(sampleProcess, { theme: 'dark' });
+    expect(output.startsWith('%%{init:')).toBe(true);
+    expect(output).toContain('"theme": "base"');
+    expect(output).toContain('"background":"#0B0E14"');
+    // Original body still present after the init line
+    expect(output).toContain('flowchart LR');
   });
 });

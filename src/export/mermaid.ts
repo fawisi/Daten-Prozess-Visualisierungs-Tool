@@ -1,4 +1,5 @@
 import type { Diagram, Relation } from '../schema.js';
+import { applyMermaidTheme } from '../theme.js';
 
 const CARDINALITY_MAP: Record<string, string> = {
   'one-to-one': '||--||',
@@ -7,7 +8,11 @@ const CARDINALITY_MAP: Record<string, string> = {
   'many-to-many': '}o--o{',
 };
 
-export function toMermaid(diagram: Diagram): string {
+export interface MermaidExportOptions {
+  theme?: 'light' | 'dark';
+}
+
+export function toMermaid(diagram: Diagram, options: MermaidExportOptions = {}): string {
   const lines: string[] = ['erDiagram'];
 
   // Sort table keys for deterministic output
@@ -40,5 +45,6 @@ export function toMermaid(diagram: Diagram): string {
     lines.push(`    ${rel.from.table} ${card} ${rel.to.table} : "${label}"`);
   }
 
-  return lines.join('\n') + '\n';
+  const body = lines.join('\n') + '\n';
+  return options.theme ? applyMermaidTheme(body, options.theme) : body;
 }

@@ -442,8 +442,9 @@ async function registerBpmnRoutes(app: FastifyInstance, resolver: WorkspaceResol
 
   app.get('/api/workspace/:workspaceId/bpmn/export', async (req, reply) => {
     const { workspaceId } = req.params as { workspaceId: string };
-    const { format } = req.query as { format?: string };
+    const { format, theme } = req.query as { format?: string; theme?: string };
     const fmt = (format ?? 'json').toLowerCase();
+    const themeOpt = theme === 'light' || theme === 'dark' ? theme : undefined;
 
     const { bpmnPath } = await resolver(workspaceId);
     const store = new ProcessStore(bpmnPath);
@@ -455,12 +456,12 @@ async function registerBpmnRoutes(app: FastifyInstance, resolver: WorkspaceResol
     }
     if (fmt === 'mermaid') {
       reply.header('content-type', 'text/plain; charset=utf-8');
-      return processToMermaid(processDoc);
+      return processToMermaid(processDoc, themeOpt ? { theme: themeOpt } : {});
     }
     problem(reply, 400, {
       type: `${PROBLEM_BASE}/bpmn-export-format`,
       title: 'Unsupported export format',
-      detail: `Format "${format}" is not supported for BPMN. Known: json, mermaid.`,
+      detail: `Format "${format}" is not supported for BPMN. Known: json, mermaid. Optional: theme=light|dark.`,
     });
     return reply;
   });
@@ -573,8 +574,13 @@ async function registerErdRoutes(app: FastifyInstance, resolver: WorkspaceResolv
 
   app.get('/api/workspace/:workspaceId/erd/export', async (req, reply) => {
     const { workspaceId } = req.params as { workspaceId: string };
-    const { format, dialect } = req.query as { format?: string; dialect?: string };
+    const { format, dialect, theme } = req.query as {
+      format?: string;
+      dialect?: string;
+      theme?: string;
+    };
     const fmt = (format ?? 'dbml').toLowerCase();
+    const themeOpt = theme === 'light' || theme === 'dark' ? theme : undefined;
 
     const { erdPath } = await resolver(workspaceId);
     const store = new DbmlStore(erdPath);
@@ -586,7 +592,7 @@ async function registerErdRoutes(app: FastifyInstance, resolver: WorkspaceResolv
     }
     if (fmt === 'mermaid') {
       reply.header('content-type', 'text/plain; charset=utf-8');
-      return toMermaid(diagram);
+      return toMermaid(diagram, themeOpt ? { theme: themeOpt } : {});
     }
     if (fmt === 'sql') {
       const d = (dialect ?? 'postgres').toLowerCase();
