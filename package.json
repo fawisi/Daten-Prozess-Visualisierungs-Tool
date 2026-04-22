@@ -15,7 +15,7 @@
   },
   "main": "./dist/server.cjs",
   "module": "./dist/server.js",
-  "types": "./dist/preview.d.ts",
+  "types": "./dist/server.d.ts",
   "files": [
     "dist",
     "README.md",
@@ -23,9 +23,14 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/server.d.ts",
-      "import": "./dist/server.js",
-      "require": "./dist/server.cjs"
+      "import": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
+      },
+      "require": {
+        "types": "./dist/server.d.cts",
+        "default": "./dist/server.cjs"
+      }
     },
     "./preview": {
       "types": "./dist/preview.d.ts",
@@ -33,9 +38,14 @@
     },
     "./preview.css": "./dist/preview.css",
     "./http-adapter": {
-      "types": "./dist/http-adapter.d.ts",
-      "import": "./dist/http-adapter.js",
-      "require": "./dist/http-adapter.cjs"
+      "import": {
+        "types": "./dist/http-adapter.d.ts",
+        "default": "./dist/http-adapter.js"
+      },
+      "require": {
+        "types": "./dist/http-adapter.d.cts",
+        "default": "./dist/http-adapter.cjs"
+      }
     }
   },
   "peerDependencies": {

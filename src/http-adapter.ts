@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyWebsocket from '@fastify/websocket';
 import { watch, type FSWatcher } from 'chokidar';
@@ -191,7 +191,7 @@ export async function createHttpServer(
   await registerLandscapeRoutes(app, resolver);
   await registerEventsRoute(app, resolver);
 
-  app.setErrorHandler((err, req, reply) => {
+  app.setErrorHandler((err: FastifyError, req, reply) => {
     const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
     app.log.error({ err, url: req.url }, 'unhandled error');
     // 4xx echoes the message back so clients can fix their input; 5xx is
@@ -733,10 +733,15 @@ async function registerErdRoutes(app: FastifyInstance, resolver: WorkspaceResolv
 async function registerEventsRoute(app: FastifyInstance, resolver: WorkspaceResolver) {
   // Track per-workspace watchers so we don't spin up a new chokidar
   // listener per client connection.
-  const watchers = new Map<
-    string,
-    { watcher: FSWatcher; clients: Set<(msg: string) => void>; bpmnPath: string; erdPath: string }
-  >();
+  type WatcherEntry = {
+    watcher: FSWatcher;
+    clients: Set<(msg: string) => void>;
+    bpmnPath: string;
+    erdPath: string;
+    ready: () => Promise<void>;
+    isReady: () => boolean;
+  };
+  const watchers = new Map<string, WatcherEntry>();
 
   async function ensureWatcher(workspaceId: string) {
     const existing = watchers.get(workspaceId);
