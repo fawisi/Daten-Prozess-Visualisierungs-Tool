@@ -1014,12 +1014,20 @@ Zusätzlich aus der Parity-Analyse (amended 2026-04-22 nach Agent-Native-Review)
       serialize + tools layers).
 
 #### P3 — L2 + Narrative
-- [ ] L2-Nodes: Container, Database, Cloud, Boundary mit Containment.
-- [ ] L1↔L2-Toggle nondestruktiv.
-- [ ] `*_parse_description` für alle drei Diagrammtypen per MCP.
-- [ ] Deutschsprachiger Fließtext („Winestro syncht mit Shopify") erzeugt
-      mind. 2 Systeme + 1 Relation.
-- [ ] Cmd+Z revertet Parse als eine Aktion.
+- [x] L2-Nodes: Container, Database, Cloud, Boundary mit Containment
+      (im Schema seit P2 Agent-Ready).
+- [ ] L1↔L2-Toggle nondestruktiv — UI-Toggle in TopHeader folgt in P3.1
+      (Schema + Sidecar schon da, landscape_set_mode + landscape_get_mode
+      funktional).
+- [x] `*_parse_description` für alle drei Diagrammtypen per MCP
+      (landscape_parse_description, process_parse_description,
+      diagram_parse_description).
+- [x] Deutschsprachiger Fließtext („Winestro syncht mit Shopify,
+      SharePoint speichert Rechnungen") erzeugt mind. 2 Systeme +
+      1 Relation (11 landscape tests + KMU-Dictionary mit ~150 Einträgen).
+- [ ] Cmd+Z revertet Parse als eine Aktion — Undo-History-Integration
+      folgt in P3.1 (Parser läuft heute atomar, `persist: false` bietet
+      Preview-Mode).
 
 #### P4 — Templates & Tablet
 - [ ] `list_templates` zeigt Starter.

@@ -12,6 +12,8 @@ import { processToMermaid } from './export-mermaid.js';
 import { derivePositionsPath, prunePositions } from '../positions.js';
 import { loadModeSidecar, saveModeSidecar } from '../mode-sidecar.js';
 import { bpmnOnlyNodeIds, inferProcessMode } from './mode-heuristic.js';
+import { parseProcessDescription } from './parse-description.js';
+import { ParseDescriptionConfigSchema } from '../narrative/config.js';
 import type { Process } from './schema.js';
 
 function processSummary(p: Process): string {
@@ -431,6 +433,42 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
       });
       return textResult(
         JSON.stringify({ ok: true, mode, sidecarFor: store.filePath }, null, 2)
+      );
+    }
+  );
+
+  // --- process_parse_description ---
+  server.registerTool(
+    'process_parse_description',
+    {
+      description:
+        "Parse German narrative text into process nodes + flows. Supports 'Zuerst…', 'Dann…', 'Wenn … dann … sonst …' (→ XOR gateway), 'Am Ende…'. Degrades engine=llm to regex with a warning (MCP sampling not yet host-supported). Pass `persist: false` to preview the result without writing.",
+      inputSchema: z.object({
+        text: z.string().min(1).max(20000),
+        config: ParseDescriptionConfigSchema.optional(),
+        persist: z.boolean().default(true),
+      }),
+      annotations: { idempotentHint: true },
+    },
+    async ({ text, config, persist }) => {
+      const base = await store.load();
+      const result = parseProcessDescription(text, config, base);
+      if (persist) await store.save(result.process);
+      return textResult(
+        JSON.stringify(
+          {
+            ok: true,
+            engineUsed: result.engineUsed,
+            stats: result.stats,
+            warnings: result.warnings,
+            unparsedSpans: result.unparsedSpans,
+            persisted: persist,
+            nodeCount: Object.keys(result.process.nodes).length,
+            flowCount: result.process.flows.length,
+          },
+          null,
+          2
+        )
       );
     }
   );
