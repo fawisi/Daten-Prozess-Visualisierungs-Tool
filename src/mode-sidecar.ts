@@ -22,13 +22,19 @@ export const BpmnModeSidecarSchema = z.object({
   version: z.literal('1.1'),
 });
 
-// TODO(p2): add LandscapeModeSidecarSchema branch + `landscape_set_mode`
-// tool together so every sidecar `kind` has a producer.
+export const LandscapeModeSidecarSchema = z.object({
+  kind: z.literal('landscape'),
+  mode: z.enum(['l1', 'l2']),
+  version: z.literal('1.1'),
+});
+
 export const ModeSidecarSchema = z.discriminatedUnion('kind', [
   BpmnModeSidecarSchema,
+  LandscapeModeSidecarSchema,
 ]);
 
 export type BpmnModeSidecar = z.infer<typeof BpmnModeSidecarSchema>;
+export type LandscapeModeSidecar = z.infer<typeof LandscapeModeSidecarSchema>;
 export type ModeSidecar = z.infer<typeof ModeSidecarSchema>;
 
 /**

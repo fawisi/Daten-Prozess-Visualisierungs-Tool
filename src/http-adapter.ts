@@ -13,10 +13,16 @@ import { DiagramSchema } from './schema.js';
 import { ProcessSchema } from './bpmn/schema.js';
 import { loadModeSidecar, saveModeSidecar } from './mode-sidecar.js';
 import { inferProcessMode, bpmnOnlyNodeIds } from './bpmn/mode-heuristic.js';
+import { LandscapeStore } from './landscape/store.js';
+import { LandscapeSchema } from './landscape/schema.js';
 import { z } from 'zod';
 
 const ModeRequestSchema = z.object({
   mode: z.enum(['simple', 'bpmn']),
+});
+
+const LandscapeModeRequestSchema = z.object({
+  mode: z.enum(['l1', 'l2']),
 });
 import { toMermaid } from './export/mermaid.js';
 import { processToMermaid } from './bpmn/export-mermaid.js';
@@ -34,7 +40,9 @@ import type { Process, ProcessNodeType_, GatewayType_ } from './bpmn/schema.js';
  */
 export type WorkspaceResolver = (
   workspaceId: string
-) => { erdPath: string; bpmnPath: string } | Promise<{ erdPath: string; bpmnPath: string }>;
+) =>
+  | { erdPath: string; bpmnPath: string; landscapePath?: string }
+  | Promise<{ erdPath: string; bpmnPath: string; landscapePath?: string }>;
 
 /**
  * Pass-through validator the hub owns. viso-mcp never learns secrets.
@@ -51,6 +59,7 @@ export interface HttpAdapterOptions {
   /** Fallback workspace paths if no resolver is provided. */
   erdFile?: string;
   bpmnFile?: string;
+  landscapeFile?: string;
   workspaceResolver?: WorkspaceResolver;
   authValidator?: AuthValidator;
   /** CORS allow-list; default: `http://localhost:3000,http://localhost:3001`. */
@@ -80,10 +89,15 @@ function problem(reply: FastifyReply, status: number, body: Omit<ProblemBody, 's
     .send({ ...body, status });
 }
 
-function defaultResolver(erdFile: string, bpmnFile: string): WorkspaceResolver {
+function defaultResolver(
+  erdFile: string,
+  bpmnFile: string,
+  landscapeFile: string
+): WorkspaceResolver {
   const erdPath = resolve(erdFile);
   const bpmnPath = resolve(bpmnFile);
-  return () => ({ erdPath, bpmnPath });
+  const landscapePath = resolve(landscapeFile);
+  return () => ({ erdPath, bpmnPath, landscapePath });
 }
 
 function parseAllowedOrigins(env: string | undefined, override?: string[]): string[] {
@@ -112,7 +126,9 @@ export async function createHttpServer(
 ): Promise<FastifyInstance> {
   const erdFile = options.erdFile ?? './schema.dbml';
   const bpmnFile = options.bpmnFile ?? './process.bpmn.json';
-  const resolver = options.workspaceResolver ?? defaultResolver(erdFile, bpmnFile);
+  const landscapeFile = options.landscapeFile ?? './landscape.landscape.json';
+  const resolver =
+    options.workspaceResolver ?? defaultResolver(erdFile, bpmnFile, landscapeFile);
   const allowedOrigins = parseAllowedOrigins(process.env.VISO_ALLOWED_ORIGINS, options.allowedOrigins);
 
   const app = Fastify({
@@ -172,6 +188,7 @@ export async function createHttpServer(
 
   await registerBpmnRoutes(app, resolver);
   await registerErdRoutes(app, resolver);
+  await registerLandscapeRoutes(app, resolver);
   await registerEventsRoute(app, resolver);
 
   app.setErrorHandler((err, req, reply) => {
@@ -820,6 +837,132 @@ function extractDbmlDiagnostics(err: unknown): unknown[] {
       start: diag.start,
       end: diag.end,
     };
+  });
+}
+
+async function registerLandscapeRoutes(app: FastifyInstance, resolver: WorkspaceResolver) {
+  app.get('/api/workspace/:workspaceId/landscape', async (req, reply) => {
+    const { workspaceId } = req.params as { workspaceId: string };
+    const { landscapePath } = await resolver(workspaceId);
+    if (!landscapePath) {
+      problem(reply, 404, {
+        type: `${PROBLEM_BASE}/landscape-not-configured`,
+        title: 'Workspace has no landscape file configured',
+      });
+      return reply;
+    }
+    try {
+      const store = new LandscapeStore(landscapePath);
+      const landscape = await store.load();
+      return { ok: true, data: landscape };
+    } catch (err) {
+      app.log.error({ err, workspaceId }, 'Landscape load failed');
+      problem(reply, 500, {
+        type: `${PROBLEM_BASE}/landscape-load-failed`,
+        title: 'Landscape load failed',
+        detail: (err as Error).message,
+      });
+      return reply;
+    }
+  });
+
+  app.put('/api/workspace/:workspaceId/landscape', async (req, reply) => {
+    const { workspaceId } = req.params as { workspaceId: string };
+    const { landscapePath } = await resolver(workspaceId);
+    if (!landscapePath) {
+      problem(reply, 404, {
+        type: `${PROBLEM_BASE}/landscape-not-configured`,
+        title: 'Workspace has no landscape file configured',
+      });
+      return reply;
+    }
+    const body = req.body as { landscape?: unknown; json?: string };
+    let parsed: unknown;
+    if (typeof body?.json === 'string') {
+      try {
+        parsed = JSON.parse(body.json);
+      } catch (err) {
+        problem(reply, 400, {
+          type: `${PROBLEM_BASE}/landscape-parse-error`,
+          title: 'Landscape JSON parse error',
+          detail: (err as Error).message,
+        });
+        return reply;
+      }
+    } else if (body?.landscape !== undefined) {
+      parsed = body.landscape;
+    } else {
+      problem(reply, 400, {
+        type: `${PROBLEM_BASE}/landscape-missing-body`,
+        title: 'Missing request body',
+        detail: 'Expected JSON body with either `json` (string) or `landscape` (object).',
+      });
+      return reply;
+    }
+    const validated = LandscapeSchema.safeParse(parsed);
+    if (!validated.success) {
+      problem(reply, 400, {
+        type: `${PROBLEM_BASE}/landscape-schema-invalid`,
+        title: 'Landscape failed schema validation',
+        errors: validated.error.issues.map((issue) => ({
+          path: issue.path.join('.'),
+          message: issue.message,
+          code: issue.code,
+        })),
+      });
+      return reply;
+    }
+    const store = new LandscapeStore(landscapePath);
+    await store.save(validated.data);
+    return {
+      ok: true,
+      nodeCount: Object.keys(validated.data.nodes).length,
+      relationCount: validated.data.relations.length,
+    };
+  });
+
+  app.get('/api/workspace/:workspaceId/landscape/mode', async (req, reply) => {
+    const { workspaceId } = req.params as { workspaceId: string };
+    const { landscapePath } = await resolver(workspaceId);
+    if (!landscapePath) {
+      problem(reply, 404, {
+        type: `${PROBLEM_BASE}/landscape-not-configured`,
+        title: 'Workspace has no landscape file configured',
+      });
+      return reply;
+    }
+    const sidecar = await loadModeSidecar(landscapePath);
+    if (sidecar?.kind === 'landscape') {
+      return { ok: true, mode: sidecar.mode, source: 'sidecar' as const };
+    }
+    return { ok: true, mode: 'l1' as const, source: 'default' as const };
+  });
+
+  app.put('/api/workspace/:workspaceId/landscape/mode', async (req, reply) => {
+    const { workspaceId } = req.params as { workspaceId: string };
+    const parsed = LandscapeModeRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      problem(reply, 400, {
+        type: `${PROBLEM_BASE}/landscape-mode-invalid`,
+        title: 'Invalid mode',
+        detail: "Expected { mode: 'l1' | 'l2' } in request body.",
+      });
+      return reply;
+    }
+    const { landscapePath } = await resolver(workspaceId);
+    if (!landscapePath) {
+      problem(reply, 404, {
+        type: `${PROBLEM_BASE}/landscape-not-configured`,
+        title: 'Workspace has no landscape file configured',
+      });
+      return reply;
+    }
+    await saveModeSidecar(landscapePath, {
+      kind: 'landscape',
+      mode: parsed.data.mode,
+      version: '1.1',
+    });
+    return { ok: true, mode: parsed.data.mode };
   });
 }
 

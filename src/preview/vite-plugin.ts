@@ -6,11 +6,13 @@ import { resolve } from 'node:path';
 import { loadModeSidecar, saveModeSidecar } from '../mode-sidecar.js';
 import { ProcessSchema } from '../bpmn/schema.js';
 import { inferProcessMode, bpmnOnlyNodeIds } from '../bpmn/mode-heuristic.js';
+import { LandscapeSchema } from '../landscape/schema.js';
 import { z } from 'zod';
 
 interface VisoPluginOptions {
   erdFile: string;
   bpmnFile: string;
+  landscapeFile?: string;
 }
 
 export function visoPlugin(
@@ -25,6 +27,11 @@ export function visoPlugin(
   const erdPositionsPath = erdSchemaPath.replace(/\.erd\.json$/, '.erd.pos.json');
   const bpmnSchemaPath = resolve(options.bpmnFile);
   const bpmnPositionsPath = bpmnSchemaPath.replace(/\.bpmn\.json$/, '.bpmn.pos.json');
+  const landscapeSchemaPath = resolve(options.landscapeFile ?? 'landscape.landscape.json');
+  const landscapePositionsPath = landscapeSchemaPath.replace(
+    /\.landscape\.json$/,
+    '.landscape.pos.json'
+  );
 
   let wss: WebSocketServer;
 
@@ -168,6 +175,75 @@ export function visoPlugin(
               }
               await saveModeSidecar(bpmnSchemaPath, {
                 kind: 'bpmn',
+                mode: parsed.data.mode,
+                version: '1.1',
+              });
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true, mode: parsed.data.mode }));
+              return;
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+              return;
+            }
+          }
+        }
+
+        // === Landscape routes (P2) ===
+        if (req.url === '/__viso-api/landscape/schema' && req.method === 'GET') {
+          return serveFile(res, landscapeSchemaPath, {
+            format: 'viso-landscape-v1',
+            nodes: {},
+            relations: [],
+          });
+        }
+
+        if (req.url === '/__viso-api/landscape/positions') {
+          if (req.method === 'GET') {
+            return serveFile(res, landscapePositionsPath, {});
+          }
+          if (req.method === 'PUT') {
+            return writeJsonBody(req, res, landscapePositionsPath);
+          }
+        }
+
+        if (req.url === '/__viso-api/landscape/source') {
+          if (req.method === 'GET') {
+            return serveRaw(res, landscapeSchemaPath, '{}');
+          }
+          if (req.method === 'PUT') {
+            return writeRawBody(req, res, landscapeSchemaPath);
+          }
+        }
+
+        if (req.url === '/__viso-api/landscape/mode') {
+          if (req.method === 'GET') {
+            try {
+              const sidecar = await loadModeSidecar(landscapeSchemaPath);
+              res.setHeader('Content-Type', 'application/json');
+              if (sidecar?.kind === 'landscape') {
+                res.end(JSON.stringify({ ok: true, mode: sidecar.mode, source: 'sidecar' }));
+              } else {
+                res.end(JSON.stringify({ ok: true, mode: 'l1', source: 'default' }));
+              }
+              return;
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+              return;
+            }
+          }
+          if (req.method === 'PUT') {
+            try {
+              const body = await readJsonBody(req);
+              const parsed = z.object({ mode: z.enum(['l1', 'l2']) }).safeParse(body);
+              if (!parsed.success) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ ok: false, error: 'Expected mode: l1 | l2' }));
+                return;
+              }
+              await saveModeSidecar(landscapeSchemaPath, {
+                kind: 'landscape',
                 mode: parsed.data.mode,
                 version: '1.1',
               });

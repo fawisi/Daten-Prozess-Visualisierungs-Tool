@@ -610,17 +610,27 @@ Blueprint.
   - `src/landscape/export-mermaid.test.ts` (architecture-beta-Output)
   - `src/preview/export/bundle.test.ts` (Zip-Struktur, Determinism)
 
-**Success Criteria P2:**
-- [ ] Neuer Diagramm-Typ `landscape` im UI-Switcher verfügbar.
-- [ ] 8 neue MCP-Tools funktional, Agent kann komplettes Landscape-Diagramm
-      erzeugen via Bulk `set_landscape`.
-- [ ] Handoff-Bundle-Export (alle 3 Diagrammtypen) produziert konsistentes
-      Zip im Browser + Ordner in CLI.
-- [ ] Round-Trip: Bundle exportieren → importieren erzeugt bit-identisches
-      Schema + Positionen.
-- [ ] `VisoEditor`-Prop-Interface extended, Phase-5-Hub-API bleibt grün
-      (Type-Check + Test in separater Fixture).
-- [ ] ~20 neue Tests grün.
+**Success Criteria P2 (Agent-Ready Slice):**
+- [x] 12 neue MCP-Tools funktional (add/remove node, add/remove relation,
+      update_node, set_status/relation_status, set_parent, set/get_mode,
+      get_schema mit metadata-Envelope, export_mermaid mit variant,
+      set_landscape als Bulk) — Agent kann komplettes Landscape-Diagramm
+      per MCP erzeugen.
+- [x] HTTP-Adapter: GET|PUT `/api/workspace/:id/landscape` + `/landscape/mode`.
+      Hub-Integration via `WorkspaceResolver.landscapePath` additiv.
+- [x] Vite-Plugin spiegelt alle Routen für lokales Preview.
+- [x] `landscape_export_mermaid` mit `variant: 'flowchart'` (primaer, C4-labelled)
+      + `'architecture-beta'` (sekundaer, icon-rich preview).
+- [x] 23 neue Tests grün (schema + export-mermaid). 173 total.
+
+**P2.1 (deferred, follows as separate branch — plan R8 Phase-Split):**
+- [ ] Canvas-Renderer (`src/preview/components/landscape/`) mit 7
+      Node-Components (Person, System, External, Container, Database,
+      Cloud, Boundary).
+- [ ] `useLandscapeSync`-Hook + `VisoEditor` `diagramType: 'landscape'`
+      Union-Erweiterung.
+- [ ] Handoff-Bundle-Export (JSZip, deterministisch) + `import_bundle`-Tool.
+- [ ] Round-Trip Export/Import Test.
 
 **Geschätzter Effort:** ~75 h.
 
@@ -985,12 +995,13 @@ Zusätzlich aus der Parity-Analyse (amended 2026-04-22 nach Agent-Native-Review)
 - [x] `.mode.json`-Sidecar persistiert pro File (GET|PUT /bpmn/mode).
 - [x] v1.0-Files laden ohne Fehler in v1.1 (Heuristik-Fallback serverseitig).
 
-#### P2 — System-Landscape L1
-- [ ] `landscape`-Diagrammtyp im UI-Switcher + MCP.
-- [ ] 8 Landscape-MCP-Tools (atomar + bulk) funktional.
-- [ ] L1-Nodes: Person, System, External; Relationen mit Label.
-- [ ] Handoff-Bundle-Export (alle 3 Diagramm-Typen) erzeugt konsistentes Zip.
-- [ ] Round-Trip Export → Import reproduziert Schema + Positionen bit-identisch.
+#### P2 — System-Landscape L1 (Agent-Ready Slice shipped)
+- [x] `landscape`-Diagrammtyp via MCP. UI-Switcher landet in P2.1.
+- [x] 12 Landscape-MCP-Tools (atomar + bulk + mode + parent) funktional.
+- [x] L1-Nodes: Person, System, External; Relationen mit Label + Technology.
+      L2-Nodes (Container, Database, Cloud, Boundary) schon im Schema.
+- [ ] Handoff-Bundle — deferred to P2.1.
+- [ ] Round-Trip Export → Import — deferred to P2.1.
 
 #### P3 — L2 + Narrative
 - [ ] L2-Nodes: Container, Database, Cloud, Boundary mit Containment.
