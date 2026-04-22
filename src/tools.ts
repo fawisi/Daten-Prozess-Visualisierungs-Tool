@@ -21,6 +21,8 @@ import {
   updateColumnStatus,
   updateTableStatus,
 } from './erd-status-sidecar.js';
+import { parseDiagramDescription } from './parse-description.js';
+import { ParseDescriptionConfigSchema } from './narrative/config.js';
 import type { Diagram, Column } from './schema.js';
 import type { ErdStore } from './erd-store-interface.js';
 
@@ -561,6 +563,41 @@ export function registerTools(server: McpServer, store: ErdStore) {
         status === null
           ? `Cleared status on "${table}.${columnName}".`
           : `Set status of "${table}.${columnName}" to "${status}".`
+      );
+    }
+  );
+
+  // --- diagram_parse_description ---
+  server.registerTool(
+    'diagram_parse_description',
+    {
+      description:
+        "Parse narrative text into ERD tables + columns. Flagship pattern: 'Tabelle users hat id, email, name'. Optional column-type via 'als': 'Tabelle orders hat id als uuid, total als numeric'. Engine=llm degrades to regex with warning. `persist: false` previews without writing.",
+      inputSchema: z.object({
+        text: z.string().min(1).max(20000),
+        config: ParseDescriptionConfigSchema.optional(),
+        persist: z.boolean().default(true),
+      }),
+      annotations: { idempotentHint: true },
+    },
+    async ({ text, config, persist }) => {
+      const base = await store.load();
+      const result = parseDiagramDescription(text, config, base);
+      if (persist) await store.save(result.diagram);
+      return textResult(
+        JSON.stringify(
+          {
+            ok: true,
+            engineUsed: result.engineUsed,
+            stats: result.stats,
+            warnings: result.warnings,
+            unparsedSpans: result.unparsedSpans,
+            persisted: persist,
+            tableCount: Object.keys(result.diagram.tables).length,
+          },
+          null,
+          2
+        )
       );
     }
   );

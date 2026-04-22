@@ -9,6 +9,8 @@ import {
 } from './schema.js';
 import { landscapeToMermaid } from './export-mermaid.js';
 import { loadModeSidecar, saveModeSidecar } from '../mode-sidecar.js';
+import { parseLandscapeDescription } from './parse-description.js';
+import { ParseDescriptionConfigSchema } from '../narrative/config.js';
 
 const LandscapeKind = z.enum([
   'person',
@@ -375,6 +377,46 @@ export function registerLandscapeTools(server: McpServer, store: LandscapeStore)
         return textResult('Landscape is empty. Add nodes first.');
       }
       return textResult(landscapeToMermaid(landscape, { variant }));
+    }
+  );
+
+  // --- landscape_parse_description ---
+  server.registerTool(
+    'landscape_parse_description',
+    {
+      description:
+        "Parse German narrative text into landscape nodes + relations (regex-first, plan R5). Example input: 'Winestro synchronisiert taeglich mit Shopify, SharePoint speichert Rechnungen'. Merges into the current landscape — re-calling with the same text is idempotent. `config.engine='llm'` is reserved for MCP sampling and currently degrades to regex with a warning. Returns unparsedSpans so the agent knows which sentences to re-phrase.",
+      inputSchema: z.object({
+        text: z.string().min(1).max(20000).describe('Narrative text in German'),
+        config: ParseDescriptionConfigSchema.optional(),
+        persist: z.boolean().default(true).describe(
+          'When true (default), the parsed result is written to the landscape file. When false, the result is returned without touching disk.'
+        ),
+      }),
+      annotations: { idempotentHint: true },
+    },
+    async ({ text, config, persist }) => {
+      const base = await store.load();
+      const result = parseLandscapeDescription(text, config, base);
+      if (persist) {
+        await store.save(result.landscape);
+      }
+      return textResult(
+        JSON.stringify(
+          {
+            ok: true,
+            engineUsed: result.engineUsed,
+            stats: result.stats,
+            warnings: result.warnings,
+            unparsedSpans: result.unparsedSpans,
+            persisted: persist,
+            nodeCount: Object.keys(result.landscape.nodes).length,
+            relationCount: result.landscape.relations.length,
+          },
+          null,
+          2
+        )
+      );
     }
   );
 
