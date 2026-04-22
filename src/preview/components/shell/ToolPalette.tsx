@@ -2,6 +2,7 @@ import React from 'react';
 import { MousePointer2, Hand, Circle, Square, Diamond, CircleDot } from 'lucide-react';
 import { useToolStore, type Tool } from '@/state/useToolStore.js';
 import { useI18n } from '@/i18n/useI18n.js';
+import { usePaletteDrag } from '@/hooks/usePaletteDrag.js';
 import { cn } from '@/lib/utils.js';
 
 interface ToolDef {
@@ -76,6 +77,9 @@ interface ToolButtonProps {
 
 function ToolButton({ tool, label, active, onClick }: ToolButtonProps) {
   const Icon = tool.icon;
+  // Only shape tools spawn nodes; cursor/pan tools skip the drag wiring.
+  const isShape = tool.group === 'shape';
+  const dragHandlers = usePaletteDrag(tool.id);
   return (
     <button
       type="button"
@@ -83,8 +87,12 @@ function ToolButton({ tool, label, active, onClick }: ToolButtonProps) {
       aria-label={`${label} (${tool.shortcut})`}
       aria-pressed={active}
       title={`${label} — ${tool.shortcut}`}
+      onPointerDown={isShape ? dragHandlers.onPointerDown : undefined}
+      onPointerMove={isShape ? dragHandlers.onPointerMove : undefined}
+      onPointerUp={isShape ? dragHandlers.onPointerUp : undefined}
+      onPointerCancel={isShape ? dragHandlers.onPointerCancel : undefined}
       className={cn(
-        'group relative size-11 rounded-md flex items-center justify-center transition-colors',
+        'group relative size-11 rounded-md flex items-center justify-center transition-colors touch-none',
         active
           ? 'bg-primary/15 text-primary ring-1 ring-primary/50'
           : 'text-muted-foreground hover:bg-accent hover:text-foreground'

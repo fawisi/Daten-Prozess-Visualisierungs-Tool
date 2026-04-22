@@ -27,6 +27,7 @@ import { StatusIndicator } from '@/components/shared/StatusIndicator.js';
 import { useDiagramSync } from '@/hooks/useDiagramSync.js';
 import { useProcessSync } from '@/hooks/useProcessSync.js';
 import { useHistory, useHistoryShortcuts } from '@/hooks/useHistory.js';
+import { useSpawnListener } from '@/hooks/usePaletteDrag.js';
 import { ToolStoreProvider, useToolStore, type SelectedNode } from '@/state/useToolStore.js';
 import { useApiConfig } from '@/state/ApiConfig.js';
 import { I18nProvider, useI18n } from '@/i18n/useI18n.js';
@@ -149,7 +150,7 @@ function ErdCanvas({
   );
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" data-viso-canvas-pane="erd">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -252,7 +253,7 @@ function BpmnCanvas({
   );
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" data-viso-canvas-pane="bpmn">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -639,6 +640,30 @@ function EditorShell({
     }
     return undefined;
   }, [activeTool, handleAddNodeAt, readOnly]);
+
+  // Palette-to-canvas Pointer-Events drag-and-drop (iPad-safe). Converts
+  // the pointer's client coordinates into canvas-relative positions by
+  // hit-testing the pane's bounding rect, then dispatches the same
+  // handleAddNodeAt path that click-to-place uses.
+  const handleSpawnFromPointer = useCallback(
+    (type: string, clientPos: { x: number; y: number }) => {
+      if (readOnly) return;
+      if (diagramType !== 'bpmn') return;
+      if (type !== 'start-event' && type !== 'end-event' && type !== 'task' && type !== 'gateway') {
+        return;
+      }
+      const pane = document.querySelector('[data-viso-canvas-pane="bpmn"]');
+      if (!pane) return;
+      const rect = pane.getBoundingClientRect();
+      handleAddNodeAt(type, { x: clientPos.x - rect.left, y: clientPos.y - rect.top });
+    },
+    [readOnly, diagramType, handleAddNodeAt]
+  );
+
+  useSpawnListener({
+    onSpawn: handleSpawnFromPointer,
+    enabled: !readOnly && diagramType === 'bpmn',
+  });
 
   const actions = useMemo(
     () =>
