@@ -41,6 +41,7 @@ import { useApiConfig } from '@/state/ApiConfig.js';
 import { I18nProvider, useI18n } from '@/i18n/useI18n.js';
 import { useTheme } from '@/state/useTheme.js';
 import { renderDiagramPng, renderDiagramSvg } from '@/export/render-diagram.js';
+import { buildBrowserBundle } from '@/export/bundle-browser.js';
 import { ProcessSchema, type Process } from '../bpmn/schema.js';
 
 // Stable references
@@ -588,7 +589,7 @@ function EditorShell({
       const themeSnapshot = resolvedTheme;
 
       let body: Blob;
-      const filename = `${activeFile.name}.${format}`;
+      const filename = `${activeFile.name}.${format === 'bundle' ? 'zip' : format}`;
       const authHeaders = api.endpoints.authHeader
         ? { Authorization: api.endpoints.authHeader }
         : undefined;
@@ -634,6 +635,44 @@ function EditorShell({
             format === 'png'
               ? await renderDiagramPng(liveNodes, { theme: themeSnapshot })
               : await renderDiagramSvg(liveNodes, { theme: themeSnapshot });
+        } catch (err) {
+          window.alert(
+            t.export.error_http_fail({
+              status: 0,
+              detail: (err as Error).message,
+            })
+          );
+          return;
+        }
+      } else if (format === 'bundle') {
+        // Handoff-Bundle: source + positions + Mermaid rolled into a
+        // deterministic Zip. SVG/PNG skipped here for speed; call
+        // export_bundle via MCP if you need the raster snapshot.
+        const sourceUrl =
+          activeFile.type === 'bpmn'
+            ? api.endpoints.bpmnSource
+            : activeFile.type === 'landscape'
+              ? api.endpoints.landscapeSource ?? ''
+              : api.endpoints.erdSource;
+        const positionsUrl =
+          activeFile.type === 'bpmn'
+            ? api.endpoints.bpmnPositions
+            : activeFile.type === 'landscape'
+              ? api.endpoints.landscapePositions ?? null
+              : api.endpoints.erdPositions;
+        // Mermaid is HTTP-only on the adapter (no Vite endpoint today);
+        // when unavailable the bundle ships source-only.
+        const mermaidUrl = hubPutUrl ? `${hubPutUrl}/export?format=mermaid` : null;
+        try {
+          body = await buildBrowserBundle({
+            diagramType: activeFile.type,
+            diagramName: activeFile.name,
+            sourceUrl,
+            positionsUrl,
+            mermaidUrl,
+            authHeader: api.endpoints.authHeader,
+            toolVersion: '1.1.0-alpha',
+          });
         } catch (err) {
           window.alert(
             t.export.error_http_fail({

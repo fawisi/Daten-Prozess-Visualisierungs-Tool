@@ -61,6 +61,7 @@ export interface Dict {
     dbml: string;
     svg: string;
     png: string;
+    bundle: string;
     error_sql_requires_http: string;
     error_mermaid_requires_http: string;
     error_sql_erd_only: string;
@@ -138,6 +139,7 @@ export const de: Dict = {
     dbml: 'DBML',
     svg: 'SVG-Bild',
     png: 'PNG-Bild',
+    bundle: 'Handoff-Paket',
     error_sql_requires_http:
       'SQL-Export benoetigt den HTTP-Adapter. Starte `viso-mcp http` oder konfiguriere `apiBaseUrl`.',
     error_mermaid_requires_http:
