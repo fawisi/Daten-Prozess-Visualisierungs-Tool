@@ -120,3 +120,29 @@ export function bpmnClassDefs(): string[] {
     `    classDef gateway fill:${TAFKA_PALETTE.warning},stroke:${TAFKA_PALETTE.warning},color:${TAFKA_PALETTE.neutralDark}`,
   ];
 }
+
+/**
+ * Status-overlay classes applied on top of the base kind-class. The
+ * stroke is strong enough to survive light + dark Mermaid themes; the
+ * base fill comes from the kind-class (task/startEvent/endEvent/gateway
+ * for BPMN, or a plain table rectangle for ERD).
+ */
+export function statusClassDefs(): string[] {
+  return [
+    `    classDef statusOpen stroke:${TAFKA_PALETTE.info},stroke-width:2px`,
+    `    classDef statusDone stroke:${TAFKA_PALETTE.success},stroke-width:2px`,
+    `    classDef statusBlocked stroke:${TAFKA_PALETTE.danger},stroke-width:3px,color:${TAFKA_PALETTE.danger}`,
+  ];
+}
+
+/** Map a persistent status value to the Mermaid class name. */
+export function statusClassName(status: 'open' | 'done' | 'blocked'): string {
+  switch (status) {
+    case 'open':
+      return 'statusOpen';
+    case 'done':
+      return 'statusDone';
+    case 'blocked':
+      return 'statusBlocked';
+  }
+}

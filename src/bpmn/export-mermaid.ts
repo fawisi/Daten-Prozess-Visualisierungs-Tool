@@ -1,5 +1,11 @@
 import type { Process } from './schema.js';
-import { applyMermaidTheme, bpmnClassDefs } from '../theme.js';
+import {
+  applyMermaidTheme,
+  bpmnClassDefs,
+  statusClassDefs,
+  statusClassName,
+} from '../theme.js';
+import { escapeMermaidLabel } from '../export/mermaid-escape.js';
 
 const NODE_SHAPE: Record<string, (id: string, label: string) => string> = {
   'start-event': (id, label) => `    ${id}(("${label}"))`,
@@ -23,7 +29,7 @@ export function processToMermaid(process: Process, options: MermaidExportOptions
     const node = process.nodes[id];
     const shapeFn = NODE_SHAPE[node.type];
     if (shapeFn) {
-      lines.push(shapeFn(id, node.label));
+      lines.push(shapeFn(id, escapeMermaidLabel(node.label)));
     }
   }
 
@@ -41,7 +47,7 @@ export function processToMermaid(process: Process, options: MermaidExportOptions
 
   for (const flow of sortedFlows) {
     if (flow.label) {
-      lines.push(`    ${flow.from} -->|"${flow.label}"| ${flow.to}`);
+      lines.push(`    ${flow.from} -->|"${escapeMermaidLabel(flow.label)}"| ${flow.to}`);
     } else {
       lines.push(`    ${flow.from} --> ${flow.to}`);
     }
@@ -62,6 +68,27 @@ export function processToMermaid(process: Process, options: MermaidExportOptions
   const taskNodes = nodeIds.filter((id) => process.nodes[id].type === 'task');
   if (taskNodes.length > 0) {
     lines.push(`    class ${taskNodes.join(',')} task`);
+  }
+
+  // Status overlay — one class per status bucket, only emit if any node
+  // uses that status so the output stays compact.
+  const byStatus: Record<'open' | 'done' | 'blocked', string[]> = {
+    open: [],
+    done: [],
+    blocked: [],
+  };
+  for (const id of nodeIds) {
+    const s = process.nodes[id].status;
+    if (s) byStatus[s].push(id);
+  }
+  const usedStatuses = (Object.keys(byStatus) as Array<keyof typeof byStatus>).filter(
+    (s) => byStatus[s].length > 0
+  );
+  if (usedStatuses.length > 0) {
+    lines.push(...statusClassDefs());
+    for (const s of usedStatuses) {
+      lines.push(`    class ${byStatus[s].join(',')} ${statusClassName(s)}`);
+    }
   }
 
   const body = lines.join('\n') + '\n';

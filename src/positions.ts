@@ -1,6 +1,6 @@
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 
 /**
  * Given a source-of-truth path (either `schema.dbml`, `schema.erd.json`,
@@ -19,6 +19,45 @@ export function derivePositionsPath(sourcePath: string): string {
     return sourcePath.replace(/\.bpmn\.json$/, '.bpmn.pos.json');
   }
   return sourcePath + '.pos.json';
+}
+
+/**
+ * Derive the mode-sidecar path for a source file. Modes and levels are
+ * persisted outside the schema so v1.0 files stay valid when loaded by
+ * v1.1 (see plan-resolved-gap #1).
+ *
+ * - `process.bpmn.json` -> `process.bpmn.mode.json`
+ * - `schema.dbml`       -> `schema.dbml.mode.json`
+ * - `foo.landscape.json` -> `foo.landscape.mode.json`
+ */
+export function deriveModePath(sourcePath: string): string {
+  if (sourcePath.endsWith('.bpmn.json')) {
+    return sourcePath.replace(/\.bpmn\.json$/, '.bpmn.mode.json');
+  }
+  if (sourcePath.endsWith('.landscape.json')) {
+    return sourcePath.replace(/\.landscape\.json$/, '.landscape.mode.json');
+  }
+  return sourcePath + '.mode.json';
+}
+
+/**
+ * Guard against path-traversal when a caller suggests a sidecar path
+ * that should be anchored to the source file's directory. If the
+ * resolved `candidate` escapes `root`, we throw — the store should
+ * never write outside the source's directory tree.
+ *
+ * Plan reference: P0 Security Requirement #4 (Sidecar-Path-Guard).
+ */
+export function assertSidecarInsideRoot(candidate: string, root: string): string {
+  const resolvedCandidate = resolve(candidate);
+  const resolvedRoot = resolve(root);
+  const prefix = resolvedRoot.endsWith(sep) ? resolvedRoot : resolvedRoot + sep;
+  if (resolvedCandidate !== resolvedRoot && !resolvedCandidate.startsWith(prefix)) {
+    throw new Error(
+      `Refusing to write sidecar outside workspace root: ${resolvedCandidate}`
+    );
+  }
+  return resolvedCandidate;
 }
 
 /**
