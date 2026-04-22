@@ -6,6 +6,39 @@
   "bin": {
     "viso-mcp": "./dist/cli.cjs"
   },
+  "main": "./dist/server.cjs",
+  "module": "./dist/server.js",
+  "types": "./dist/preview.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/server.js",
+      "require": "./dist/server.cjs"
+    },
+    "./preview": {
+      "types": "./dist/preview.d.ts",
+      "import": "./dist/preview.js"
+    },
+    "./preview.css": "./dist/preview.css",
+    "./http-adapter": {
+      "import": "./dist/http-adapter.js",
+      "require": "./dist/http-adapter.cjs"
+    }
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@xyflow/react": "^12.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": false },
+    "react-dom": { "optional": false },
+    "@xyflow/react": { "optional": false }
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",

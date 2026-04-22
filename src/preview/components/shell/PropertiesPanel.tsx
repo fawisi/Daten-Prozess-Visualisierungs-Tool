@@ -35,7 +35,7 @@ export interface NodeUpdate {
   color?: string;
 }
 
-interface PropertiesPanelProps {
+export interface PropertiesPanelProps {
   diagramMeta?: {
     name?: string;
     format?: string;

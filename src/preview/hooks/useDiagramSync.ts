@@ -4,8 +4,9 @@ import type { Node, Edge, NodeChange } from '@xyflow/react';
 import type { Diagram, Positions } from '../../schema.js';
 import type { ConnectionStatus } from '../components/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
+import { useApiConfig } from '../state/ApiConfig.js';
 
-const WS_PATH = '/__viso-ws';
+const DEFAULT_WS_PATH = '/__viso-ws';
 const RECONNECT_INTERVAL = 2000;
 const POSITION_WRITE_DEBOUNCE = 500;
 
@@ -35,6 +36,7 @@ function diagramToNodesAndEdges(diagram: Diagram): { nodes: Node[]; edges: Edge[
 }
 
 export function useDiagramSync() {
+  const api = useApiConfig();
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
@@ -46,10 +48,12 @@ export function useDiagramSync() {
   const loadSchema = useCallback(async () => {
     try {
       const [schemaRes, posRes] = await Promise.all([
-        fetch('/__viso-api/schema'),
-        fetch('/__viso-api/positions'),
+        fetch(api.endpoints.erdSchema, authInit(api.endpoints.authHeader)),
+        fetch(api.endpoints.erdPositions, authInit(api.endpoints.authHeader)),
       ]);
-      const diagram: Diagram = await schemaRes.json();
+      const raw = await schemaRes.json();
+      // Hub adapter wraps payloads in { ok, data }; Vite returns the raw diagram.
+      const diagram: Diagram = raw?.data ?? raw;
       const positions: Positions = posRes.ok ? await posRes.json() : {};
       positionsRef.current = positions;
 
@@ -69,7 +73,7 @@ export function useDiagramSync() {
     } catch (err) {
       console.error('Failed to load schema:', err);
     }
-  }, []);
+  }, [api]);
 
   // WebSocket connection
   useEffect(() => {
@@ -78,7 +82,8 @@ export function useDiagramSync() {
 
     function connect() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${window.location.host}${WS_PATH}`);
+      const wsUrl = resolveWsUrl(api.endpoints.wsUrl ?? DEFAULT_WS_PATH, protocol);
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -117,7 +122,7 @@ export function useDiagramSync() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [loadSchema]);
+  }, [loadSchema, api]);
 
   // Debounced position writer
   const savePositions = useCallback((updatedNodes: Node[]) => {
@@ -131,13 +136,16 @@ export function useDiagramSync() {
       clearTimeout(writeTimeoutRef.current);
     }
     writeTimeoutRef.current = setTimeout(() => {
-      fetch('/__viso-api/positions', {
+      fetch(api.endpoints.erdPositions, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
+        },
         body: JSON.stringify(positions),
       }).catch((err) => console.error('Failed to save positions:', err));
     }, POSITION_WRITE_DEBOUNCE);
-  }, []);
+  }, [api]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -191,4 +199,17 @@ export function useDiagramSync() {
     snapshotPositions,
     savePositions,
   };
+}
+
+function authInit(authHeader: string | undefined): RequestInit | undefined {
+  if (!authHeader) return undefined;
+  return { headers: { Authorization: authHeader } };
+}
+
+function resolveWsUrl(wsPath: string, protocol: 'http:' | 'https:' | 'ws:' | 'wss:' | string): string {
+  if (/^wss?:\/\//.test(wsPath)) return wsPath;
+  if (/^https?:\/\//.test(wsPath)) {
+    return wsPath.replace(/^http/, 'ws');
+  }
+  return `${protocol}//${window.location.host}${wsPath}`;
 }

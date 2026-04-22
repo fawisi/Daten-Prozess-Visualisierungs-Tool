@@ -11,7 +11,7 @@ import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { DiagramTabs } from '@/components/shell/DiagramTabs.js';
 import { TopHeader, type ExportFormat } from '@/components/shell/TopHeader.js';
 import { ToolPalette } from '@/components/shell/ToolPalette.js';
-import { PropertiesPanel, type NodeUpdate } from '@/components/shell/PropertiesPanel.js';
+import { PropertiesPanel, type NodeUpdate, type PropertiesPanelProps } from '@/components/shell/PropertiesPanel.js';
 import { CodePanel } from '@/components/shell/CodePanel.js';
 import { CommandPalette, buildDefaultActions } from '@/components/shell/CommandPalette.js';
 import type { DiagramFile } from '@/components/shell/AppSidebar.js';
@@ -28,6 +28,7 @@ import { useDiagramSync } from '@/hooks/useDiagramSync.js';
 import { useProcessSync } from '@/hooks/useProcessSync.js';
 import { useHistory, useHistoryShortcuts } from '@/hooks/useHistory.js';
 import { ToolStoreProvider, useToolStore, type SelectedNode } from '@/state/useToolStore.js';
+import { useApiConfig } from '@/state/ApiConfig.js';
 
 // Stable references
 const erdNodeTypes = { table: TableNode };
@@ -251,7 +252,22 @@ function BpmnCanvas({
   );
 }
 
-function EditorShell() {
+interface EditorShellProps {
+  readOnly?: boolean;
+  initialDiagramType?: 'bpmn' | 'erd';
+  attachmentSlot?: PropertiesPanelProps['attachmentSlot'];
+  attachmentEligibleTypes?: string[];
+  onSelectionChange?: (node: SelectedNode | null) => void;
+}
+
+function EditorShell({
+  readOnly = false,
+  initialDiagramType,
+  attachmentSlot,
+  attachmentEligibleTypes,
+  onSelectionChange,
+}: EditorShellProps) {
+  const api = useApiConfig();
   const [files, setFiles] = useState<DiagramFile[]>([]);
   const [openTabs, setOpenTabs] = useState<DiagramFile[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
@@ -261,9 +277,28 @@ function EditorShell() {
     useToolStore();
   const history = useHistory<Record<string, { x: number; y: number }>>();
 
+  useEffect(() => {
+    onSelectionChange?.(selectedNode);
+  }, [selectedNode, onSelectionChange]);
+
   // Load available files
   useEffect(() => {
-    fetch('/__viso-api/files')
+    if (!api.endpoints.filesList) {
+      // Hub mode — files are implicit from the active workspace. Seed a
+      // single synthetic entry so the editor can mount its canvas.
+      const synthetic: DiagramFile[] = [
+        {
+          name: initialDiagramType === 'erd' ? 'schema' : 'process',
+          path: initialDiagramType === 'erd' ? 'schema.dbml' : 'process.bpmn.json',
+          type: initialDiagramType ?? 'bpmn',
+        },
+      ];
+      setFiles(synthetic);
+      setOpenTabs(synthetic);
+      setActiveTab(synthetic[0].path);
+      return;
+    }
+    fetch(api.endpoints.filesList)
       .then((res) => res.json())
       .then((data: DiagramFile[]) => {
         setFiles(data);
@@ -274,7 +309,7 @@ function EditorShell() {
         setActiveTab((prev) => prev ?? data[0]?.path ?? null);
       })
       .catch(console.error);
-  }, []);
+  }, [api, initialDiagramType]);
 
   const activeFile = openTabs.find((t) => t.path === activeTab) ?? null;
   const diagramType = activeFile?.type ?? null;
@@ -282,12 +317,12 @@ function EditorShell() {
   // Load source when CodePanel opens or active file changes
   useEffect(() => {
     if (!codePanelOpen || !activeFile) return;
-    const url = activeFile.type === 'bpmn' ? '/__viso-api/bpmn/source' : '/__viso-api/source';
+    const url = activeFile.type === 'bpmn' ? api.endpoints.bpmnSource : api.endpoints.erdSource;
     fetch(url)
       .then((r) => r.text())
       .then(setSourceText)
       .catch(console.error);
-  }, [codePanelOpen, activeFile]);
+  }, [codePanelOpen, activeFile, api]);
 
   const handleTabClose = useCallback((path: string) => {
     setOpenTabs((prev) => {
@@ -310,45 +345,131 @@ function EditorShell() {
   const handleExport = useCallback(
     async (format: ExportFormat) => {
       if (!activeFile) return;
-      if (format === 'dbml' || format === 'mermaid' || format === 'sql' || format === 'svg' || format === 'png') {
-        // MVP: raw source download for the underlying file; formatted exports land in Phase 5.
-        const handles = canvasRef.current;
-        if (!handles) return;
-        if (format === 'dbml' && activeFile.type !== 'erd') {
-          window.alert('DBML export is ERD-only.');
-          return;
-        }
-        if (format === 'sql' && activeFile.type !== 'erd') {
-          window.alert('SQL export is ERD-only.');
-          return;
-        }
-        if (format === 'svg' || format === 'png' || format === 'mermaid' || format === 'sql') {
-          window.alert(`${format.toUpperCase()} export arrives with Phase 5 HTTP-adapter. For now, use the CLI: viso-mcp export --format ${format}`);
-          return;
-        }
-        const text = await handles.refreshSource();
-        const blob = new Blob([text], { type: 'text/plain' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `${activeFile.name}.${format}`;
-        a.click();
-        URL.revokeObjectURL(a.href);
+      const handles = canvasRef.current;
+      if (!handles) return;
+      if (format === 'dbml' && activeFile.type !== 'erd') {
+        window.alert('DBML export is ERD-only.');
+        return;
       }
+      if (format === 'sql' && activeFile.type !== 'erd') {
+        window.alert('SQL export is ERD-only.');
+        return;
+      }
+
+      let body: Blob;
+      let filename = `${activeFile.name}.${format}`;
+      const authHeaders = api.endpoints.authHeader
+        ? { Authorization: api.endpoints.authHeader }
+        : undefined;
+
+      if (format === 'json') {
+        const text = await handles.refreshSource();
+        body = new Blob([text], { type: 'application/json' });
+      } else if (format === 'dbml') {
+        // Raw DBML source is the active file for ERD — matches what the adapter would send.
+        const text = await handles.refreshSource();
+        body = new Blob([text], { type: 'text/plain' });
+      } else if (format === 'mermaid') {
+        const url = activeFile.type === 'bpmn'
+          ? `${bpmnExportBase(api.endpoints.bpmnPut)}?format=mermaid`
+          : `${erdExportBase(api.endpoints.erdPut)}?format=mermaid`;
+        if (url.startsWith('null?') || !url) {
+          window.alert('Mermaid export requires the HTTP adapter. Run `viso-mcp http` or configure `apiBaseUrl`.');
+          return;
+        }
+        const res = await fetch(url, authHeaders ? { headers: authHeaders } : undefined);
+        if (!res.ok) {
+          window.alert(`Mermaid export failed: ${res.status} ${res.statusText}`);
+          return;
+        }
+        body = new Blob([await res.text()], { type: 'text/plain' });
+      } else if (format === 'sql') {
+        const base = erdExportBase(api.endpoints.erdPut);
+        if (!base) {
+          window.alert('SQL export requires the HTTP adapter. Run `viso-mcp http` or configure `apiBaseUrl`.');
+          return;
+        }
+        const res = await fetch(`${base}?format=sql&dialect=postgres`, authHeaders ? { headers: authHeaders } : undefined);
+        if (!res.ok) {
+          const detail = await res.text().catch(() => '');
+          window.alert(`SQL export failed: ${res.status} ${res.statusText}\n${detail}`);
+          return;
+        }
+        body = new Blob([await res.text()], { type: 'text/plain' });
+      } else if (format === 'svg' || format === 'png') {
+        window.alert(`${format.toUpperCase()} export is scheduled for Phase 6 (requires canvas snapshotting).`);
+        return;
+      } else {
+        const text = await handles.refreshSource();
+        body = new Blob([text], { type: 'text/plain' });
+      }
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(body);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
     },
-    [activeFile]
+    [activeFile, api]
   );
 
-  const handleSaveSource = useCallback(async (next: string) => {
-    await canvasRef.current?.putSource(next);
-  }, []);
+  const handleSaveSource = useCallback(
+    async (next: string) => {
+      if (readOnly) return;
+      await canvasRef.current?.putSource(next);
+    },
+    [readOnly]
+  );
 
   const handleUpdateNode = useCallback(
-    (_id: string, _update: NodeUpdate) => {
-      // TODO: wire to HTTP-adapter (Phase 5). For now, log so users see the plumbing.
-      // eslint-disable-next-line no-console
-      console.info('PropertiesPanel update (pending HTTP-adapter):', _id, _update);
+    async (id: string, update: NodeUpdate) => {
+      if (readOnly) return;
+      if (!activeFile || activeFile.type !== 'bpmn') {
+        // ERD node edits land in a later phase (needs DBML mutation semantics).
+        return;
+      }
+      const bpmnPutUrl = api.endpoints.bpmnPut;
+      if (!bpmnPutUrl) {
+        // Preview (Vite) mode — fall back to /bpmn/source round-trip via
+        // the existing raw-source PUT so iterative editing still works.
+        const handles = canvasRef.current;
+        if (!handles) return;
+        const raw = await handles.refreshSource();
+        const doc = JSON.parse(raw) as { nodes: Record<string, Record<string, unknown>>; flows: unknown[] };
+        const node = doc.nodes[id];
+        if (!node) return;
+        if (update.label !== undefined) node.label = update.label;
+        if (update.description !== undefined) {
+          if (update.description === '') delete node.description;
+          else node.description = update.description;
+        }
+        if (update.type !== undefined) node.type = update.type;
+        if (update.color !== undefined) node.color = update.color;
+        await handles.putSource(JSON.stringify(doc, null, 2));
+        return;
+      }
+      // Hub mode — fetch, mutate, PUT.
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (api.endpoints.authHeader) headers.Authorization = api.endpoints.authHeader;
+      const currentRes = await fetch(api.endpoints.bpmnSchema, api.endpoints.authHeader ? { headers: { Authorization: api.endpoints.authHeader } } : undefined);
+      if (!currentRes.ok) throw new Error(`Fetch BPMN failed: ${currentRes.status}`);
+      const raw = await currentRes.json();
+      const processDoc = raw?.data ?? raw;
+      const node = processDoc.nodes?.[id];
+      if (!node) return;
+      if (update.label !== undefined) node.label = update.label;
+      if (update.description !== undefined) {
+        if (update.description === '') delete node.description;
+        else node.description = update.description;
+      }
+      if (update.type !== undefined) node.type = update.type;
+      await fetch(bpmnPutUrl, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ process: processDoc }),
+      });
     },
-    []
+    [activeFile, api, readOnly]
   );
 
   const handleUndo = useCallback(() => {
@@ -424,13 +545,26 @@ function EditorShell() {
             itemCount: selectedNode ? undefined : files.length,
             itemLabel: 'Open Files',
           }}
-          onUpdateNode={handleUpdateNode}
+          onUpdateNode={readOnly ? undefined : handleUpdateNode}
+          attachmentSlot={attachmentSlot}
+          attachmentEligibleTypes={attachmentEligibleTypes}
         />
       </div>
       <FooterBar />
       <CommandPalette diagramType={diagramType} actions={actions} />
     </div>
   );
+}
+
+function bpmnExportBase(bpmnPut: string | null): string {
+  // Hub mode PUT url is `…/workspace/:id/bpmn`; export endpoint is sibling.
+  if (!bpmnPut) return '';
+  return `${bpmnPut}/export`;
+}
+
+function erdExportBase(erdPut: string | null): string {
+  if (!erdPut) return '';
+  return `${erdPut}/export`;
 }
 
 function CanvasEmpty() {
@@ -472,3 +606,6 @@ export function App() {
     </TooltipProvider>
   );
 }
+
+export { EditorShell };
+export type { EditorShellProps };
