@@ -64,7 +64,7 @@ Code-Simplicity, Agent-Native-Parity.
    - `exports` map: `types` first, `default` last.
    - Peer deps `optional: true` for React/ReactDOM/@xyflow (server-only consumers currently blocked).
    - Trusted Publishing (OIDC) replaces `NPM_TOKEN`.
-   - MCP Registry requires **Reverse-DNS namespace** `io.github.fabianwillisimon/viso-mcp`.
+   - MCP Registry requires **Reverse-DNS namespace** `io.github.fawisi/viso-mcp`.
    - `sideEffects: ["**/*.css"]` so downstream bundlers don't tree-shake `preview.css`.
    - `publint` + `@arethetypeswrong/cli` + `size-limit` as release-gates.
 
@@ -1529,7 +1529,7 @@ MCP-Sampling-Spec, fast-check.dev.
 **Kern:** `exports`-Map **types first, default last**. `sideEffects: ["**/*.css"]` (nicht `false`) —
 sonst wird `preview.css` tree-shaken. Peer-Deps `optional: true` für React/@xyflow — sonst blockieren
 server-only-Installationen. **Trusted Publishing mit OIDC** ersetzt `NPM_TOKEN`. MCP Registry
-verlangt **Reverse-DNS-Namespace** `io.github.fabianwillisimon/viso-mcp`.
+verlangt **Reverse-DNS-Namespace** `io.github.fawisi/viso-mcp`.
 
 **Plan-Konsequenzen:** P5 erweitert durch konkrete Checkliste:
 
@@ -1584,7 +1584,7 @@ verlangt **Reverse-DNS-Namespace** `io.github.fabianwillisimon/viso-mcp`.
    - `npm audit` clean nach Override.
 
 4. **MCP Registry Submission** (neu seit Oct 2025 GA):
-   - `server.json` im Repo-Root mit `"name": "io.github.fabianwillisimon/viso-mcp"`.
+   - `server.json` im Repo-Root mit `"name": "io.github.fawisi/viso-mcp"`.
    - `brew install mcp-publisher` → `mcp-publisher login` → `publish`.
    - Propagiert ~24 h zu GitHub-MCP-Registry, PulseMCP, mcp-get.
 
