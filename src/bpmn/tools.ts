@@ -263,19 +263,30 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
     'set_bpmn',
     {
       description:
-        'Replace the entire BPMN process with new JSON in one call. Atomic — the file stays unchanged on parse error. Orphan positions (nodes that no longer exist) are pruned from the sidecar. For > 3 mutations prefer this over atomic add/remove tools.',
-      inputSchema: z.object({
-        json: z
-          .string()
-          .min(1, 'BPMN JSON cannot be empty')
-          .describe('Complete BPMN process as a JSON string'),
-      }),
+        'Replace the entire BPMN process with new JSON in one call. Atomic — the file stays unchanged on parse error. Orphan positions (nodes that no longer exist) are pruned from the sidecar. For > 3 mutations prefer this over atomic add/remove tools. The canonical parameter is `process`; the legacy `json` alias is accepted for backwards compatibility (MA-4).',
+      inputSchema: z
+        .object({
+          process: z
+            .string()
+            .min(1, 'BPMN process JSON cannot be empty')
+            .describe('Complete BPMN process as a JSON string')
+            .optional(),
+          json: z
+            .string()
+            .min(1)
+            .describe('@deprecated — use `process` instead (kept for v1.0 compat)')
+            .optional(),
+        })
+        .refine((d) => d.process !== undefined || d.json !== undefined, {
+          message: 'Either `process` or `json` must be provided',
+        }),
       annotations: {
         destructiveHint: true,
         idempotentHint: true,
       },
     },
-    async ({ json }) => {
+    async (input) => {
+      const json = input.process ?? input.json!;
       let parsed: unknown;
       try {
         parsed = JSON.parse(json);

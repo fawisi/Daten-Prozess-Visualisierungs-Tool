@@ -430,13 +430,26 @@ export function registerLandscapeTools(server: McpServer, store: LandscapeStore)
     'set_landscape',
     {
       description:
-        'Replace the entire landscape with new JSON in one call. Atomic — the file stays unchanged on parse error. For > 3 mutations prefer this over atomic add/remove tools.',
-      inputSchema: z.object({
-        json: z.string().min(1, 'Landscape JSON cannot be empty'),
-      }),
+        'Replace the entire landscape with new JSON in one call. Atomic — the file stays unchanged on parse error. For > 3 mutations prefer this over atomic add/remove tools. The canonical parameter is `landscape`; the legacy `json` alias is accepted for backwards compatibility (MA-4).',
+      inputSchema: z
+        .object({
+          landscape: z
+            .string()
+            .min(1, 'Landscape JSON cannot be empty')
+            .optional(),
+          json: z
+            .string()
+            .min(1)
+            .describe('@deprecated — use `landscape` instead (kept for v1.0 compat)')
+            .optional(),
+        })
+        .refine((d) => d.landscape !== undefined || d.json !== undefined, {
+          message: 'Either `landscape` or `json` must be provided',
+        }),
       annotations: { destructiveHint: true, idempotentHint: true },
     },
-    async ({ json }) => {
+    async (input) => {
+      const json = input.landscape ?? input.json!;
       let parsed: unknown;
       try {
         parsed = JSON.parse(json);
