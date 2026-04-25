@@ -7,7 +7,15 @@ import { loadModeSidecar, saveModeSidecar } from '../mode-sidecar.js';
 import { ProcessSchema } from '../bpmn/schema.js';
 import { inferProcessMode, bpmnOnlyNodeIds } from '../bpmn/mode-heuristic.js';
 import { LandscapeSchema } from '../landscape/schema.js';
+import { DiagramSchema } from '../schema.js';
+import { writeValidatedRawBody } from './vite-validation.js';
 import { z } from 'zod';
+
+// RFC-7807 Problem-Type base URIs per diagram. v1.1.1 hardens all three
+// PUT-source endpoints with Zod-validation + atomic write (CR-4).
+const PROBLEM_BASE_ERD = 'https://viso-mcp.dev/problems/erd';
+const PROBLEM_BASE_BPMN = 'https://viso-mcp.dev/problems/bpmn';
+const PROBLEM_BASE_LANDSCAPE = 'https://viso-mcp.dev/problems/landscape';
 
 interface VisoPluginOptions {
   erdFile: string;
@@ -104,7 +112,13 @@ export function visoPlugin(
             return serveRaw(res, erdSchemaPath, '{}');
           }
           if (req.method === 'PUT') {
-            return writeRawBody(req, res, erdSchemaPath);
+            return writeValidatedRawBody(
+              req,
+              res,
+              erdSchemaPath,
+              DiagramSchema,
+              PROBLEM_BASE_ERD
+            );
           }
         }
 
@@ -132,7 +146,13 @@ export function visoPlugin(
             return serveRaw(res, bpmnSchemaPath, '{}');
           }
           if (req.method === 'PUT') {
-            return writeRawBody(req, res, bpmnSchemaPath);
+            return writeValidatedRawBody(
+              req,
+              res,
+              bpmnSchemaPath,
+              ProcessSchema,
+              PROBLEM_BASE_BPMN
+            );
           }
         }
 
@@ -212,7 +232,13 @@ export function visoPlugin(
             return serveRaw(res, landscapeSchemaPath, '{}');
           }
           if (req.method === 'PUT') {
-            return writeRawBody(req, res, landscapeSchemaPath);
+            return writeValidatedRawBody(
+              req,
+              res,
+              landscapeSchemaPath,
+              LandscapeSchema,
+              PROBLEM_BASE_LANDSCAPE
+            );
           }
         }
 
@@ -390,23 +416,4 @@ async function serveRaw(
       res.end('Internal Server Error');
     }
   }
-}
-
-function writeRawBody(
-  req: import('http').IncomingMessage,
-  res: import('http').ServerResponse,
-  path: string
-) {
-  let body = '';
-  req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-  req.on('end', async () => {
-    try {
-      await writeFile(path, body, 'utf-8');
-      res.statusCode = 200;
-      res.end('OK');
-    } catch {
-      res.statusCode = 500;
-      res.end('Write failed');
-    }
-  });
 }
