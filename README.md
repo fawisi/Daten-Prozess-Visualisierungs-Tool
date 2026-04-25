@@ -40,17 +40,38 @@ npm install --save-dev viso-mcp
 
 ## Quick start
 
+### Frisch starten (DBML, empfohlen)
+
 ```bash
-# Create an empty project and wire it up
 mkdir my-schema && cd my-schema
-npx viso-mcp init
-
-# Start the browser editor
-npx viso-mcp serve
-
-# Or just let your agent drive it — the MCP server is already running
-# via the `viso-mcp` entry in .mcp.json
+npx viso-mcp init                  # writes .mcp.json + ./schema.dbml is the default ERD path
+npx viso-mcp serve                 # browser editor on http://localhost:5555
 ```
+
+### Mit Demo-Fixtures fuer alle 3 Use Cases
+
+```bash
+npx viso-mcp init --with-samples
+# zusätzlich erzeugt: schema.dbml, process.bpmn.json, landscape.landscape.json
+```
+
+### Legacy-JSON nutzen (statt DBML)
+
+```bash
+npx viso-mcp init --format=json    # ./schema.erd.json
+```
+
+### Bestehendes JSON-Schema migrieren
+
+```bash
+npx viso-mcp migrate ./schema.erd.json
+# → erzeugt ./schema.dbml, behält die alte JSON-Datei als .bak Backup
+```
+
+> **Note:** The `set_dbml` MCP tool runs an auto-migration when the active
+> ERD store is JSON-backed. The tool's response payload contains
+> `migrated: true` plus the new `.dbml` path so an agent can update its
+> own bookkeeping without a follow-up call.
 
 ## MCP tools
 
