@@ -36,6 +36,7 @@ import {
   useToolStore,
   type SelectedNode,
   type ProcessMode,
+  type Tool,
 } from '@/state/useToolStore.js';
 import { useApiConfig } from '@/state/ApiConfig.js';
 import { I18nProvider, useI18n } from '@/i18n/useI18n.js';
@@ -111,9 +112,12 @@ function erdJsonValidate(text: string): { ok: true } | { ok: false; message: str
 function ErdCanvas({
   canvasRef,
   onSelect,
+  onPaneClick,
 }: {
   canvasRef: React.MutableRefObject<CanvasHandles | null>;
   onSelect: (node: SelectedNode | null) => void;
+  /** v1.1.1 — CR-2: Click-to-Place fuer ERD-Tabellen. */
+  onPaneClick?: (flowPos: { x: number; y: number }) => void;
 }) {
   const api = useApiConfig();
   const sync = useDiagramSync();
@@ -161,6 +165,20 @@ function ErdCanvas({
     [onSelect]
   );
 
+  // v1.1.1 — CR-2: Click-to-Place. Wenn ein Add-Tool aktiv ist, place
+  // bei pane-click; sonst Selection clearen wie bisher.
+  const handlePaneClick = useCallback(
+    (evt: React.MouseEvent) => {
+      if (onPaneClick) {
+        const bounds = (evt.currentTarget as HTMLElement).getBoundingClientRect();
+        onPaneClick({ x: evt.clientX - bounds.left, y: evt.clientY - bounds.top });
+      } else {
+        onSelect(null);
+      }
+    },
+    [onPaneClick, onSelect]
+  );
+
   return (
     <div className="relative h-full w-full" data-viso-canvas-pane="erd">
       <ReactFlow
@@ -168,7 +186,7 @@ function ErdCanvas({
         edges={edges}
         onNodesChange={onNodesChange}
         onNodeClick={onNodeClick}
-        onPaneClick={() => onSelect(null)}
+        onPaneClick={handlePaneClick}
         nodeTypes={erdNodeTypes}
         edgeTypes={erdEdgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
@@ -249,7 +267,7 @@ function BpmnCanvas({
   );
 
   const handlePaneClick = useCallback(
-    (evt: React.MouseEvent<HTMLDivElement>) => {
+    (evt: React.MouseEvent) => {
       if (onPaneClick) {
         // ReactFlow does not expose the project helper outside its hook, so
         // approximate with the raw pane offset. The position writer
@@ -306,9 +324,12 @@ function BpmnCanvas({
 function LandscapeCanvas({
   canvasRef,
   onSelect,
+  onPaneClick,
 }: {
   canvasRef: React.MutableRefObject<CanvasHandles | null>;
   onSelect: (node: SelectedNode | null) => void;
+  /** v1.1.1 — CR-3: Click-to-Place fuer Landscape-Knoten. */
+  onPaneClick?: (flowPos: { x: number; y: number }) => void;
 }) {
   const api = useApiConfig();
   const sync = useLandscapeSync();
@@ -358,6 +379,19 @@ function LandscapeCanvas({
     [onSelect]
   );
 
+  // v1.1.1 — CR-3: Click-to-Place fuer Landscape-Knoten.
+  const handlePaneClick = useCallback(
+    (evt: React.MouseEvent) => {
+      if (onPaneClick) {
+        const bounds = (evt.currentTarget as HTMLElement).getBoundingClientRect();
+        onPaneClick({ x: evt.clientX - bounds.left, y: evt.clientY - bounds.top });
+      } else {
+        onSelect(null);
+      }
+    },
+    [onPaneClick, onSelect]
+  );
+
   return (
     <div className="relative h-full w-full" data-viso-canvas-pane="landscape">
       <ReactFlow
@@ -365,7 +399,7 @@ function LandscapeCanvas({
         edges={edges}
         onNodesChange={onNodesChange}
         onNodeClick={onNodeClick}
-        onPaneClick={() => onSelect(null)}
+        onPaneClick={handlePaneClick}
         nodeTypes={landscapeNodeTypes}
         edgeTypes={landscapeEdgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
@@ -820,77 +854,111 @@ function EditorShell({
   useHistoryShortcuts({ onUndo: handleUndo, onRedo: handleRedo });
 
   const handleAddNodeAt = useCallback(
-    async (type: 'start-event' | 'end-event' | 'task' | 'gateway', pos: { x: number; y: number }) => {
+    async (type: Tool, pos: { x: number; y: number }) => {
       if (readOnly) return;
+      if (type === 'pointer' || type === 'pan') return;
       const handles = canvasRef.current;
       if (!handles) return;
       const raw = await handles.refreshSource();
-      let doc: { nodes: Record<string, Record<string, unknown>>; flows: unknown[]; format?: string };
-      try {
-        doc = JSON.parse(raw);
-      } catch {
-        doc = { format: 'viso-bpmn-v1', nodes: {}, flows: [] };
-      }
-      if (!doc.nodes) doc.nodes = {};
-      if (!doc.flows) doc.flows = [];
-      // Enforce the same "max 1 start-event" invariant as `process_add_node`
-      // so the UI and MCP agents never diverge on what a valid BPMN looks like.
-      if (type === 'start-event') {
-        const existing = Object.entries(doc.nodes).find(
-          ([, n]) => (n as { type?: string }).type === 'start-event'
-        );
-        if (existing) {
-          window.alert(t.validation.single_start_event({ existing: existing[0] }));
-          setActiveTool('pointer');
-          return;
-        }
-      }
-      const baseId = typePrefix(type);
-      let suffix = 1;
-      let id = `${baseId}_${suffix}`;
-      while (doc.nodes[id]) {
-        suffix += 1;
-        id = `${baseId}_${suffix}`;
-      }
-      doc.nodes[id] = {
-        type,
-        label: defaultLabel(type),
-        ...(type === 'gateway' ? { gatewayType: 'exclusive' } : {}),
-      };
-      await handles.putSource(JSON.stringify(doc, null, 2));
 
-      // Persist the clicked pane position so the new node lands where the
-      // user clicked instead of at 0,0 from the ELK pass.  The positions
-      // sidecar only exists in Vite mode (`/__viso-api/bpmn/positions`);
-      // hub adapters don't surface it yet, so skip the write and let ELK
-      // place the node on next load.
-      const isVitePositions = api.endpoints.bpmnPositions.startsWith('/__viso-api/');
-      if (isVitePositions) {
+      // ===== BPMN =====
+      if (type === 'start-event' || type === 'end-event' || type === 'task' || type === 'gateway') {
+        let doc: { nodes: Record<string, Record<string, unknown>>; flows: unknown[]; format?: string };
         try {
-          const posUrl = api.endpoints.bpmnPositions;
-          const current = await fetch(posUrl).then((r) => (r.ok ? r.json() : {}));
-          await fetch(posUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...current, [id]: pos }),
-          });
+          doc = JSON.parse(raw);
         } catch {
-          /* positions are a nice-to-have; ELK will reflow on next load */
+          doc = { format: 'viso-bpmn-v1', nodes: {}, flows: [] };
         }
+        if (!doc.nodes) doc.nodes = {};
+        if (!doc.flows) doc.flows = [];
+        // Enforce the same "max 1 start-event" invariant as `process_add_node`.
+        if (type === 'start-event') {
+          const existing = Object.entries(doc.nodes).find(
+            ([, n]) => (n as { type?: string }).type === 'start-event'
+          );
+          if (existing) {
+            window.alert(t.validation.single_start_event({ existing: existing[0] }));
+            setActiveTool('pointer');
+            return;
+          }
+        }
+        const baseId = typePrefix(type);
+        let suffix = 1;
+        let id = `${baseId}_${suffix}`;
+        while (doc.nodes[id]) {
+          suffix += 1;
+          id = `${baseId}_${suffix}`;
+        }
+        doc.nodes[id] = {
+          type,
+          label: defaultLabel(type),
+          ...(type === 'gateway' ? { gatewayType: 'exclusive' } : {}),
+        };
+        await handles.putSource(JSON.stringify(doc, null, 2));
+        await persistPosition(api.endpoints.bpmnPositions, id, pos);
+        setActiveTool('pointer');
+        return;
       }
 
-      // Reset the tool so subsequent clicks don't keep spawning nodes.
-      setActiveTool('pointer');
+      // ===== ERD (v1.1.1 — CR-2) =====
+      if (type === 'table') {
+        let doc: { tables: Record<string, Record<string, unknown>>; relations?: unknown[]; format?: string; name?: string };
+        try {
+          doc = JSON.parse(raw);
+        } catch {
+          doc = { format: 'viso-erd-v1', tables: {}, relations: [] };
+        }
+        if (!doc.tables) doc.tables = {};
+        let suffix = Object.keys(doc.tables).length + 1;
+        let id = `table_${suffix}`;
+        while (doc.tables[id]) {
+          suffix += 1;
+          id = `table_${suffix}`;
+        }
+        doc.tables[id] = {
+          columns: [{ name: 'id', type: 'uuid', primary: true }],
+          description: 'Neue Tabelle',
+        };
+        await handles.putSource(JSON.stringify(doc, null, 2));
+        await persistPosition(api.endpoints.erdPositions, id, pos);
+        setActiveTool('pointer');
+        return;
+      }
+
+      // ===== Landscape (v1.1.1 — CR-3) =====
+      if (type.startsWith('lc-')) {
+        const kind = type.replace('lc-', '') as 'person' | 'system' | 'external' | 'container' | 'database';
+        let doc: { nodes: Record<string, Record<string, unknown>>; relations?: unknown[]; format?: string; name?: string };
+        try {
+          doc = JSON.parse(raw);
+        } catch {
+          doc = { format: 'viso-landscape-v1', nodes: {}, relations: [] };
+        }
+        if (!doc.nodes) doc.nodes = {};
+        let suffix = Object.keys(doc.nodes).length + 1;
+        let id = `${kind}_${suffix}`;
+        while (doc.nodes[id]) {
+          suffix += 1;
+          id = `${kind}_${suffix}`;
+        }
+        doc.nodes[id] = {
+          kind,
+          label: landscapeDefaultLabel(kind),
+        };
+        await handles.putSource(JSON.stringify(doc, null, 2));
+        const positionsUrl = api.endpoints.landscapePositions;
+        if (positionsUrl) await persistPosition(positionsUrl, id, pos);
+        setActiveTool('pointer');
+        return;
+      }
     },
     [readOnly, api, setActiveTool, t]
   );
 
-  const bpmnPaneClick = useMemo(() => {
+  const paneClick = useMemo(() => {
     if (readOnly) return undefined;
-    if (activeTool === 'start-event' || activeTool === 'end-event' || activeTool === 'task' || activeTool === 'gateway') {
-      return (pos: { x: number; y: number }) => handleAddNodeAt(activeTool, pos);
-    }
-    return undefined;
+    if (activeTool === 'pointer' || activeTool === 'pan') return undefined;
+    return (pos: { x: number; y: number }) => handleAddNodeAt(activeTool, pos);
   }, [activeTool, handleAddNodeAt, readOnly]);
 
   // Palette-to-canvas Pointer-Events drag-and-drop (iPad-safe). Converts
@@ -985,11 +1053,11 @@ function EditorShell({
             }
           >
             {diagramType === 'bpmn' ? (
-              <BpmnCanvas canvasRef={canvasRef} onSelect={setSelectedNode} onPaneClick={bpmnPaneClick} />
+              <BpmnCanvas canvasRef={canvasRef} onSelect={setSelectedNode} onPaneClick={paneClick} />
             ) : diagramType === 'erd' ? (
-              <ErdCanvas canvasRef={canvasRef} onSelect={setSelectedNode} />
+              <ErdCanvas canvasRef={canvasRef} onSelect={setSelectedNode} onPaneClick={paneClick} />
             ) : diagramType === 'landscape' ? (
-              <LandscapeCanvas canvasRef={canvasRef} onSelect={setSelectedNode} />
+              <LandscapeCanvas canvasRef={canvasRef} onSelect={setSelectedNode} onPaneClick={paneClick} />
             ) : (
               <CanvasEmpty />
             )}
@@ -1045,6 +1113,45 @@ function defaultLabel(type: 'start-event' | 'end-event' | 'task' | 'gateway'): s
       return 'Neuer Task';
     case 'gateway':
       return 'Entscheidung?';
+  }
+}
+
+// v1.1.1 — CR-3: Default-Labels fuer Landscape-Knoten beim Click-to-Place.
+function landscapeDefaultLabel(kind: 'person' | 'system' | 'external' | 'container' | 'database'): string {
+  switch (kind) {
+    case 'person':
+      return 'Neue Person';
+    case 'system':
+      return 'Neues System';
+    case 'external':
+      return 'Externes System';
+    case 'container':
+      return 'Container';
+    case 'database':
+      return 'Datenbank';
+  }
+}
+
+// v1.1.1 — CR-2 / CR-3: Position-Sidecar atomar persistieren. Lokal beim
+// Click-to-Place fuer ERD/BPMN/Landscape; Hub-Mode wird nicht ueberschrieben
+// (positionsUrl typischerweise null).
+async function persistPosition(
+  positionsUrl: string | null | undefined,
+  id: string,
+  pos: { x: number; y: number }
+): Promise<void> {
+  if (!positionsUrl) return;
+  const isVitePositions = positionsUrl.startsWith('/__viso-api/');
+  if (!isVitePositions) return;
+  try {
+    const current = await fetch(positionsUrl).then((r) => (r.ok ? r.json() : {}));
+    await fetch(positionsUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...current, [id]: pos }),
+    });
+  } catch {
+    /* positions are a nice-to-have; ELK will reflow on next load */
   }
 }
 

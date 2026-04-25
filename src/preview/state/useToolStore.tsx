@@ -37,10 +37,19 @@ const ToolStoreContext = createContext<ToolStoreValue | null>(null);
 const TOOL_SHORTCUTS: Record<string, Tool> = {
   v: 'pointer',
   h: 'pan',
+  // BPMN
   '1': 'start-event',
   '2': 'end-event',
   '3': 'task',
   '4': 'gateway',
+  // ERD (v1.1.1 — CR-2)
+  '5': 'table',
+  // Landscape (v1.1.1 — CR-3)
+  '6': 'lc-person',
+  '7': 'lc-system',
+  '8': 'lc-external',
+  '9': 'lc-container',
+  '0': 'lc-database',
 };
 
 export function ToolStoreProvider({ children }: { children: React.ReactNode }) {

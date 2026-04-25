@@ -29,12 +29,22 @@ interface ToolDef {
 }
 
 const TOOLS: ToolDef[] = [
+  // Cursor (alle Diagramme)
   { id: 'pointer', translationKey: 'pointer', shortcut: 'V', icon: MousePointer2, group: 'cursor' },
   { id: 'pan', translationKey: 'pan', shortcut: 'H', icon: Hand, group: 'cursor' },
+  // BPMN-Shapes (Shortcut 1-4)
   { id: 'start-event', translationKey: 'start_event', shortcut: '1', icon: Circle, group: 'shape', diagramType: 'bpmn' },
   { id: 'end-event', translationKey: 'end_event', shortcut: '2', icon: CircleDot, group: 'shape', diagramType: 'bpmn' },
   { id: 'task', translationKey: 'task', shortcut: '3', icon: Square, group: 'shape', diagramType: 'bpmn' },
   { id: 'gateway', translationKey: 'gateway', shortcut: '4', icon: Diamond, group: 'shape', diagramType: 'bpmn' },
+  // ERD-Shapes (v1.1.1 — CR-2): Shortcut 5
+  { id: 'table', translationKey: 'table', shortcut: '5', icon: Table2, group: 'shape', diagramType: 'erd' },
+  // Landscape-Shapes (v1.1.1 — CR-3): Shortcut 6-9, 0
+  { id: 'lc-person', translationKey: 'lc_person', shortcut: '6', icon: User, group: 'shape', diagramType: 'landscape' },
+  { id: 'lc-system', translationKey: 'lc_system', shortcut: '7', icon: Box, group: 'shape', diagramType: 'landscape' },
+  { id: 'lc-external', translationKey: 'lc_external', shortcut: '8', icon: ExternalLink, group: 'shape', diagramType: 'landscape' },
+  { id: 'lc-container', translationKey: 'lc_container', shortcut: '9', icon: Container, group: 'shape', diagramType: 'landscape' },
+  { id: 'lc-database', translationKey: 'lc_database', shortcut: '0', icon: Database, group: 'shape', diagramType: 'landscape' },
 ];
 
 interface ToolPaletteProps {
