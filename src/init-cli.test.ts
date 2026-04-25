@@ -168,4 +168,44 @@ describe('runInitCli', () => {
     expect(code).toBe(0);
     expect(await exists(join(tempDir, '.mcp.json'))).toBe(true);
   });
+
+  it('--format=dbml is the default and writes ./schema.dbml as erdFile', async () => {
+    await mkdir(join(tempDir, '.claude'), { recursive: true });
+    expect(await runInitCli([], tempDir)).toBe(0);
+    const after = await read(join(tempDir, '.mcp.json'));
+    const entry = (after.mcpServers as Record<string, unknown>)['viso-mcp'] as {
+      args: string[];
+    };
+    expect(entry.args).toContain('./schema.dbml');
+  });
+
+  it('--format=json switches the default erdFile to ./schema.erd.json', async () => {
+    await mkdir(join(tempDir, '.claude'), { recursive: true });
+    expect(await runInitCli(['--format=json'], tempDir)).toBe(0);
+    const after = await read(join(tempDir, '.mcp.json'));
+    const entry = (after.mcpServers as Record<string, unknown>)['viso-mcp'] as {
+      args: string[];
+    };
+    expect(entry.args).toContain('./schema.erd.json');
+    expect(entry.args).not.toContain('./schema.dbml');
+  });
+
+  it('rejects an invalid --format value with exit 2', async () => {
+    expect(await runInitCli(['--format=xml'], tempDir)).toBe(2);
+  });
+
+  it('--with-samples copies the bundled DBML, BPMN, and Landscape fixtures', async () => {
+    await mkdir(join(tempDir, '.claude'), { recursive: true });
+    expect(await runInitCli(['--with-samples'], tempDir)).toBe(0);
+    expect(await exists(join(tempDir, 'schema.dbml'))).toBe(true);
+    expect(await exists(join(tempDir, 'process.bpmn.json'))).toBe(true);
+    expect(await exists(join(tempDir, 'landscape.landscape.json'))).toBe(true);
+  });
+
+  it('--with-samples + --format=json copies the JSON ERD fixture instead', async () => {
+    await mkdir(join(tempDir, '.claude'), { recursive: true });
+    expect(await runInitCli(['--with-samples', '--format=json'], tempDir)).toBe(0);
+    expect(await exists(join(tempDir, 'schema.erd.json'))).toBe(true);
+    expect(await exists(join(tempDir, 'schema.dbml'))).toBe(false);
+  });
 });

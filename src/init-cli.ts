@@ -1,7 +1,21 @@
-import { readFile, writeFile, stat, rename, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, stat, rename, mkdir, copyFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+export type ErdSourceFormat = 'dbml' | 'json';
+
+/**
+ * Resolve the absolute path of the bundled fixtures directory. Works in
+ * both the source-tree (src/init-cli.ts) and the dist build (dist/init-cli.js)
+ * by walking from the current module location up to the package root.
+ */
+function fixturesDir(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  // Source path: <pkg>/src   ; Dist path: <pkg>/dist  ; Either way fixtures live at <pkg>/fixtures.
+  return resolve(here, '..', 'fixtures');
+}
 
 /**
  * Configuration object that becomes the `viso-mcp` entry in `.mcp.json`.
@@ -29,6 +43,9 @@ export interface InitOptions {
   cwd: string;
   erdFile: string;
   bpmnFile: string;
+  landscapeFile: string;
+  format: ErdSourceFormat;
+  withSamples: boolean;
   global: boolean;
   dryRun: boolean;
   force: boolean;
@@ -62,6 +79,14 @@ export async function runInit(opts: InitOptions): Promise<InitResult> {
   const target = opts.global
     ? join(homedir(), '.claude.json')
     : join(opts.cwd, '.mcp.json');
+
+  // --with-samples: copy bundled demo fixtures next to the .mcp.json so a
+  // first-time user has an ERD, a BPMN process, and a Landscape ready to
+  // open without needing to know the file shapes (CR-6 / MI-3).
+  if (opts.withSamples && !opts.dryRun) {
+    await copySampleFiles(opts);
+  }
+
   const nextEntry = buildMcpEntry({
     erdFile: opts.erdFile,
     bpmnFile: opts.bpmnFile,
@@ -177,23 +202,51 @@ function diffSummary(
 export async function runInitCli(argv: string[], cwd: string = process.cwd()): Promise<number> {
   const opts: InitOptions = {
     cwd,
-    erdFile: './schema.dbml',
+    // Default-erdFile depends on --format; resolved after argv parse.
+    erdFile: '',
     bpmnFile: './process.bpmn.json',
+    landscapeFile: './landscape.landscape.json',
+    format: 'dbml',
+    withSamples: false,
     global: false,
     dryRun: false,
     force: false,
   };
+
+  let explicitErdFile = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--global') opts.global = true;
     else if (arg === '--dry-run') opts.dryRun = true;
     else if (arg === '--force') opts.force = true;
-    else if (arg.startsWith('--file=')) opts.erdFile = arg.slice('--file='.length);
-    else if (arg === '--file') opts.erdFile = argv[++i];
-    else if (arg.startsWith('--bpmn-file=')) {
+    else if (arg === '--with-samples') opts.withSamples = true;
+    else if (arg.startsWith('--format=')) {
+      const v = arg.slice('--format='.length);
+      if (v !== 'dbml' && v !== 'json') {
+        process.stderr.write(`Invalid --format: ${v} (expected dbml | json)\n`);
+        return 2;
+      }
+      opts.format = v;
+    } else if (arg === '--format') {
+      const v = argv[++i];
+      if (v !== 'dbml' && v !== 'json') {
+        process.stderr.write(`Invalid --format: ${v} (expected dbml | json)\n`);
+        return 2;
+      }
+      opts.format = v;
+    } else if (arg.startsWith('--file=')) {
+      opts.erdFile = arg.slice('--file='.length);
+      explicitErdFile = true;
+    } else if (arg === '--file') {
+      opts.erdFile = argv[++i];
+      explicitErdFile = true;
+    } else if (arg.startsWith('--bpmn-file=')) {
       opts.bpmnFile = arg.slice('--bpmn-file='.length);
     } else if (arg === '--bpmn-file') opts.bpmnFile = argv[++i];
+    else if (arg.startsWith('--landscape-file=')) {
+      opts.landscapeFile = arg.slice('--landscape-file='.length);
+    } else if (arg === '--landscape-file') opts.landscapeFile = argv[++i];
     else if (arg === '-h' || arg === '--help') {
       printInitHelp();
       return 0;
@@ -202,6 +255,11 @@ export async function runInitCli(argv: string[], cwd: string = process.cwd()): P
       printInitHelp();
       return 2;
     }
+  }
+
+  // Resolve default erdFile from --format unless an explicit --file was given.
+  if (!explicitErdFile) {
+    opts.erdFile = opts.format === 'dbml' ? './schema.dbml' : './schema.erd.json';
   }
 
   try {
@@ -233,12 +291,60 @@ function printInitHelp() {
 Usage: viso-mcp init [options]
 
 Options:
-  --file <path>         ERD source file (default: ./schema.dbml)
-  --bpmn-file <path>    BPMN process file (default: ./process.bpmn.json)
-  --global              Write to ~/.claude.json instead of ./.mcp.json
-  --dry-run             Show the diff without writing anything
-  --force               Overwrite an existing viso-mcp entry without saving a .bak
-  -h, --help            Show this help
+  --format dbml|json     ERD source format (default: dbml — recommended)
+  --file <path>          ERD source file (default: ./schema.dbml or ./schema.erd.json)
+  --bpmn-file <path>     BPMN process file (default: ./process.bpmn.json)
+  --landscape-file <p>   Landscape file (default: ./landscape.landscape.json)
+  --with-samples         Copy demo fixtures for ERD, BPMN, Landscape
+  --global               Write to ~/.claude.json instead of ./.mcp.json
+  --dry-run              Show the diff without writing anything
+  --force                Overwrite an existing viso-mcp entry without saving a .bak
+  -h, --help             Show this help
 `
   );
+}
+
+/**
+ * Copy bundled demo fixtures into the cwd. Skips files that already exist
+ * unless --force is passed (caller passes opts.force through). Best-effort:
+ * a missing fixture file is reported on stderr but doesn't abort init.
+ */
+async function copySampleFiles(opts: InitOptions): Promise<void> {
+  const samples = fixturesDir();
+  const initSamples = join(samples, 'init-samples');
+
+  const entries: { src: string; dst: string }[] = [
+    {
+      src: join(
+        initSamples,
+        opts.format === 'dbml' ? 'schema.dbml' : 'schema.erd.json'
+      ),
+      dst: join(opts.cwd, opts.erdFile),
+    },
+    {
+      src: join(initSamples, 'process.bpmn.json'),
+      dst: join(opts.cwd, opts.bpmnFile),
+    },
+    {
+      src: join(initSamples, 'landscape.landscape.json'),
+      dst: join(opts.cwd, opts.landscapeFile),
+    },
+  ];
+
+  for (const { src, dst } of entries) {
+    try {
+      await stat(src);
+    } catch {
+      process.stderr.write(`warning: sample missing at ${src}\n`);
+      continue;
+    }
+    if (await pathExists(dst)) {
+      if (!opts.force) {
+        process.stderr.write(`skipping ${dst} (exists; use --force to overwrite)\n`);
+        continue;
+      }
+    }
+    await mkdir(dirname(dst), { recursive: true });
+    await copyFile(src, dst);
+  }
 }
