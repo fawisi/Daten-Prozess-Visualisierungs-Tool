@@ -48,6 +48,32 @@ describe('ProcessNodeSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts a status field with a valid enum value', () => {
+    const result = ProcessNodeSchema.safeParse({
+      type: 'task',
+      label: 'Migrate users',
+      status: 'blocked',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a node without status (optional field)', () => {
+    const result = ProcessNodeSchema.safeParse({
+      type: 'task',
+      label: 'Migrate users',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects unknown status values — enum is EN-only', () => {
+    const result = ProcessNodeSchema.safeParse({
+      type: 'task',
+      label: 'Migrate users',
+      status: 'offen', // DE translation must not be persisted
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('FlowSchema', () => {
@@ -73,7 +99,7 @@ describe('FlowSchema', () => {
 describe('ProcessSchema', () => {
   it('validates a complete process', () => {
     const result = ProcessSchema.safeParse({
-      format: 'daten-viz-bpmn-v1',
+      format: 'viso-bpmn-v1',
       name: 'Test Process',
       nodes: {
         start: { type: 'start-event', label: 'Begin' },
@@ -90,7 +116,7 @@ describe('ProcessSchema', () => {
 
   it('rejects wrong format', () => {
     const result = ProcessSchema.safeParse({
-      format: 'daten-viz-erd-v1',
+      format: 'viso-erd-v1',
       nodes: {},
       flows: [],
     });

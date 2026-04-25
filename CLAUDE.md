@@ -1,4 +1,4 @@
-# Daten & Prozess Visualisierungs-Tool
+# viso-mcp — Agent-Native Diagram Editor
 
 ## Arbeitsregeln
 

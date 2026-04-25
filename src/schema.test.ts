@@ -50,6 +50,34 @@ describe('TableSchema', () => {
     const result = TableSchema.safeParse({ columns: [] });
     expect(result.success).toBe(false);
   });
+
+  it('accepts a status field on the table', () => {
+    const result = TableSchema.safeParse({
+      columns: [{ name: 'id', type: 'uuid', primary: true }],
+      status: 'blocked',
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('ColumnSchema status', () => {
+  it('accepts a status field on a column', () => {
+    const result = ColumnSchema.safeParse({
+      name: 'email',
+      type: 'varchar',
+      status: 'open',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects unknown status values (enum is EN-only, e.g. no "offen")', () => {
+    const result = ColumnSchema.safeParse({
+      name: 'email',
+      type: 'varchar',
+      status: 'offen',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('DiagramSchema', () => {
@@ -60,7 +88,7 @@ describe('DiagramSchema', () => {
 
   it('validates a full diagram', () => {
     const diagram = {
-      format: 'daten-viz-erd-v1',
+      format: 'viso-erd-v1',
       name: 'Test DB',
       tables: {
         users: {

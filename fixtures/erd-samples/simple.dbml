@@ -1,0 +1,15 @@
+Table users {
+  id uuid [pk]
+  email varchar(255) [not null, note: 'Login email, unique across tenants']
+  name varchar(128) [not null]
+  role varchar(32) [note: 'admin, instructor, student']
+}
+
+Table posts {
+  id uuid [pk]
+  user_id uuid [not null]
+  title varchar(256) [not null]
+  body text
+}
+
+Ref: posts.user_id > users.id

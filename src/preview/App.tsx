@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -6,10 +6,14 @@ import {
   MiniMap,
   Controls,
 } from '@xyflow/react';
-import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { AppSidebar } from '@/components/shell/AppSidebar.js';
+import type { Node, NodeMouseHandler } from '@xyflow/react';
+import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { DiagramTabs } from '@/components/shell/DiagramTabs.js';
+import { TopHeader, type ExportFormat } from '@/components/shell/TopHeader.js';
+import { ToolPalette } from '@/components/shell/ToolPalette.js';
+import { PropertiesPanel, type NodeUpdate, type PropertiesPanelProps } from '@/components/shell/PropertiesPanel.js';
+import { CodePanel } from '@/components/shell/CodePanel.js';
+import { CommandPalette, buildDefaultActions } from '@/components/shell/CommandPalette.js';
 import type { DiagramFile } from '@/components/shell/AppSidebar.js';
 import { TableNode } from '@/components/erd/TableNode.js';
 import { RelationEdge } from '@/components/erd/RelationEdge.js';
@@ -18,12 +22,29 @@ import { EndEventNode } from '@/components/bpmn/EndEventNode.js';
 import { TaskNode } from '@/components/bpmn/TaskNode.js';
 import { GatewayNode } from '@/components/bpmn/GatewayNode.js';
 import { SequenceFlowEdge } from '@/components/bpmn/SequenceFlowEdge.js';
+import { LandscapeNode } from '@/components/landscape/LandscapeNode.js';
+import { LandscapeRelationEdge } from '@/components/landscape/LandscapeRelationEdge.js';
 import { EmptyState } from '@/components/shared/EmptyState.js';
 import { StatusIndicator } from '@/components/shared/StatusIndicator.js';
 import { useDiagramSync } from '@/hooks/useDiagramSync.js';
 import { useProcessSync } from '@/hooks/useProcessSync.js';
+import { useLandscapeSync } from '@/hooks/useLandscapeSync.js';
+import { useHistory, useHistoryShortcuts } from '@/hooks/useHistory.js';
+import { useSpawnListener } from '@/hooks/usePaletteDrag.js';
+import {
+  ToolStoreProvider,
+  useToolStore,
+  type SelectedNode,
+  type ProcessMode,
+} from '@/state/useToolStore.js';
+import { useApiConfig } from '@/state/ApiConfig.js';
+import { I18nProvider, useI18n } from '@/i18n/useI18n.js';
+import { useTheme } from '@/state/useTheme.js';
+import { renderDiagramPng, renderDiagramSvg } from '@/export/render-diagram.js';
+import { buildBrowserBundle } from '@/export/bundle-browser.js';
+import { ProcessSchema, type Process } from '../bpmn/schema.js';
 
-// Stable references — outside component
+// Stable references
 const erdNodeTypes = { table: TableNode };
 const erdEdgeTypes = { relation: RelationEdge };
 const bpmnNodeTypes = {
@@ -33,21 +54,121 @@ const bpmnNodeTypes = {
   bpmnGateway: GatewayNode,
 };
 const bpmnEdgeTypes = { sequenceFlow: SequenceFlowEdge };
+// Module-scope — plan R1 requires stable identity across renders.
+const landscapeNodeTypes = { landscapeNode: LandscapeNode };
+const landscapeEdgeTypes = { landscapeRelation: LandscapeRelationEdge };
 
 const defaultEdgeOptions = {
   type: 'smoothstep' as const,
   style: { stroke: 'var(--edge-stroke)', strokeWidth: 1.5 },
 };
 
-function ErdCanvas() {
-  const { nodes, edges, status, isEmpty, onNodesChange } = useDiagramSync();
+interface CanvasHandles {
+  applyAutoLayout: () => Promise<void>;
+  snapshotPositions: () => Record<string, { x: number; y: number }>;
+  applyPositions: (p: Record<string, { x: number; y: number }>) => void;
+  /** Live React-Flow nodes — used by the PNG/SVG exporter to compute bounds. */
+  getNodes: () => Node[];
+  sourceUrl: string;
+  refreshSource: () => Promise<string>;
+  putSource: (text: string) => Promise<void>;
+  validateSource: (text: string) => { ok: true } | { ok: false; message: string; line?: number };
+  language: 'json' | 'dbml';
+  sourceTitle: string;
+}
+
+function bpmnValidate(text: string): { ok: true } | { ok: false; message: string; line?: number } {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object') return { ok: false, message: 'Expected object' };
+    if (parsed.format !== 'viso-bpmn-v1') {
+      return { ok: false, message: `Unexpected format "${parsed.format}", expected viso-bpmn-v1` };
+    }
+    return { ok: true };
+  } catch (e) {
+    const m = /position (\d+)/.exec(String(e));
+    let line: number | undefined;
+    if (m) {
+      line = text.slice(0, Number(m[1])).split('\n').length;
+    }
+    return { ok: false, message: e instanceof Error ? e.message : String(e), line };
+  }
+}
+
+function erdJsonValidate(text: string): { ok: true } | { ok: false; message: string; line?: number } {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object') return { ok: false, message: 'Expected object' };
+    if (parsed.format !== 'viso-erd-v1') {
+      return { ok: false, message: `Unexpected format "${parsed.format}"` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+function ErdCanvas({
+  canvasRef,
+  onSelect,
+}: {
+  canvasRef: React.MutableRefObject<CanvasHandles | null>;
+  onSelect: (node: SelectedNode | null) => void;
+}) {
+  const api = useApiConfig();
+  const sync = useDiagramSync();
+  const { nodes, edges, status, isEmpty, onNodesChange } = sync;
+
+  useEffect(() => {
+    const erdSourceUrl = api.endpoints.erdSource;
+    const authHeader = api.endpoints.authHeader;
+    canvasRef.current = {
+      applyAutoLayout: sync.applyAutoLayout,
+      snapshotPositions: sync.snapshotPositions,
+      applyPositions: sync.applyPositions,
+      getNodes: () => nodes,
+      sourceUrl: erdSourceUrl,
+      language: 'json',
+      sourceTitle: 'schema.erd.json',
+      refreshSource: async () => {
+        const res = await fetch(erdSourceUrl, authHeader ? { headers: { Authorization: authHeader } } : undefined);
+        return res.text();
+      },
+      putSource: async (text: string) => {
+        const res = await fetch(erdSourceUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'text/plain',
+            ...(authHeader ? { Authorization: authHeader } : {}),
+          },
+          body: text,
+        });
+        if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+      },
+      validateSource: erdJsonValidate,
+    };
+  }, [sync, canvasRef, api]);
+
+  const onNodeClick = useCallback<NodeMouseHandler>(
+    (_, node) => {
+      onSelect({
+        id: node.id,
+        type: node.type ?? 'table',
+        diagramType: 'erd',
+        data: node.data as Record<string, unknown>,
+      });
+    },
+    [onSelect]
+  );
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" data-viso-canvas-pane="erd">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
+        onNodeClick={onNodeClick}
+        onPaneClick={() => onSelect(null)}
         nodeTypes={erdNodeTypes}
         edgeTypes={erdEdgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
@@ -72,15 +193,85 @@ function ErdCanvas() {
   );
 }
 
-function BpmnCanvas() {
-  const { nodes, edges, status, isEmpty, onNodesChange } = useProcessSync();
+function BpmnCanvas({
+  canvasRef,
+  onSelect,
+  onPaneClick,
+}: {
+  canvasRef: React.MutableRefObject<CanvasHandles | null>;
+  onSelect: (node: SelectedNode | null) => void;
+  onPaneClick?: (flowPos: { x: number; y: number }) => void;
+}) {
+  const api = useApiConfig();
+  const sync = useProcessSync();
+  const { nodes, edges, status, isEmpty, onNodesChange } = sync;
+
+  useEffect(() => {
+    const bpmnSourceUrl = api.endpoints.bpmnSource;
+    const authHeader = api.endpoints.authHeader;
+    canvasRef.current = {
+      applyAutoLayout: sync.applyAutoLayout,
+      snapshotPositions: sync.snapshotPositions,
+      applyPositions: sync.applyPositions,
+      getNodes: () => nodes,
+      sourceUrl: bpmnSourceUrl,
+      language: 'json',
+      sourceTitle: 'process.bpmn.json',
+      refreshSource: async () => {
+        const res = await fetch(bpmnSourceUrl, authHeader ? { headers: { Authorization: authHeader } } : undefined);
+        return res.text();
+      },
+      putSource: async (text: string) => {
+        const res = await fetch(bpmnSourceUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'text/plain',
+            ...(authHeader ? { Authorization: authHeader } : {}),
+          },
+          body: text,
+        });
+        if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+      },
+      validateSource: bpmnValidate,
+    };
+  }, [sync, canvasRef, api]);
+
+  const onNodeClick = useCallback<NodeMouseHandler>(
+    (_, node) => {
+      onSelect({
+        id: node.id,
+        type: node.type ?? 'bpmnTask',
+        diagramType: 'bpmn',
+        data: node.data as Record<string, unknown>,
+      });
+    },
+    [onSelect]
+  );
+
+  const handlePaneClick = useCallback(
+    (evt: React.MouseEvent<HTMLDivElement>) => {
+      if (onPaneClick) {
+        // ReactFlow does not expose the project helper outside its hook, so
+        // approximate with the raw pane offset. The position writer
+        // overlays ELK / user-placed positions on next load; this is good
+        // enough for a first spawn.
+        const bounds = (evt.currentTarget as HTMLElement).getBoundingClientRect();
+        onPaneClick({ x: evt.clientX - bounds.left, y: evt.clientY - bounds.top });
+      } else {
+        onSelect(null);
+      }
+    },
+    [onPaneClick, onSelect]
+  );
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" data-viso-canvas-pane="bpmn">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
+        onNodeClick={onNodeClick}
+        onPaneClick={handlePaneClick}
         nodeTypes={bpmnNodeTypes}
         edgeTypes={bpmnEdgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
@@ -98,7 +289,6 @@ function BpmnCanvas() {
           maskColor="rgba(11, 14, 20, 0.85)"
         />
         <Controls />
-        {/* SVG marker for arrow heads */}
         <svg style={{ position: 'absolute', top: 0, left: 0, width: 0, height: 0 }}>
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -113,70 +303,769 @@ function BpmnCanvas() {
   );
 }
 
-export function App() {
+function LandscapeCanvas({
+  canvasRef,
+  onSelect,
+}: {
+  canvasRef: React.MutableRefObject<CanvasHandles | null>;
+  onSelect: (node: SelectedNode | null) => void;
+}) {
+  const api = useApiConfig();
+  const sync = useLandscapeSync();
+  const { nodes, edges, status, isEmpty, onNodesChange } = sync;
+
+  useEffect(() => {
+    const sourceUrl = api.endpoints.landscapeSource ?? api.endpoints.landscapeSchema ?? '';
+    const authHeader = api.endpoints.authHeader;
+    canvasRef.current = {
+      applyAutoLayout: sync.applyAutoLayout,
+      snapshotPositions: sync.snapshotPositions,
+      applyPositions: sync.applyPositions,
+      getNodes: () => nodes,
+      sourceUrl,
+      language: 'json',
+      sourceTitle: 'landscape.landscape.json',
+      refreshSource: async () => {
+        if (!sourceUrl) return '{}';
+        const res = await fetch(sourceUrl, authHeader ? { headers: { Authorization: authHeader } } : undefined);
+        return res.text();
+      },
+      putSource: async (text: string) => {
+        if (!api.endpoints.landscapeSource) return;
+        const res = await fetch(api.endpoints.landscapeSource, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'text/plain',
+            ...(authHeader ? { Authorization: authHeader } : {}),
+          },
+          body: text,
+        });
+        if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+      },
+      validateSource: landscapeJsonValidate,
+    };
+  }, [sync, canvasRef, api, nodes]);
+
+  const onNodeClick = useCallback<NodeMouseHandler>(
+    (_, node) => {
+      onSelect({
+        id: node.id,
+        type: node.type ?? 'landscapeNode',
+        diagramType: 'landscape',
+        data: node.data as Record<string, unknown>,
+      });
+    },
+    [onSelect]
+  );
+
+  return (
+    <div className="relative h-full w-full" data-viso-canvas-pane="landscape">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onNodeClick={onNodeClick}
+        onPaneClick={() => onSelect(null)}
+        nodeTypes={landscapeNodeTypes}
+        edgeTypes={landscapeEdgeTypes}
+        defaultEdgeOptions={defaultEdgeOptions}
+        fitView
+        fitViewOptions={{ padding: 0.2 }}
+        minZoom={0.1}
+        maxZoom={2}
+        proOptions={{ hideAttribution: true }}
+        connectionLineStyle={{ stroke: 'var(--edge-stroke-hover)' }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--canvas-grid-dot)" />
+        <MiniMap
+          style={{ background: 'var(--minimap-bg)', border: '1px solid var(--controls-border)', borderRadius: '6px' }}
+          nodeColor="var(--minimap-node)"
+          maskColor="rgba(11, 14, 20, 0.85)"
+        />
+        <Controls />
+      </ReactFlow>
+      {isEmpty && (
+        <EmptyState message="No landscape nodes yet. Use landscape_add_node to create them." />
+      )}
+      <StatusIndicator status={status} />
+    </div>
+  );
+}
+
+function landscapeJsonValidate(text: string): { ok: true } | { ok: false; message: string; line?: number } {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object') return { ok: false, message: 'Expected object' };
+    if (parsed.format !== 'viso-landscape-v1') {
+      return { ok: false, message: `Unexpected format "${parsed.format}"` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+interface EditorShellProps {
+  readOnly?: boolean;
+  initialDiagramType?: 'bpmn' | 'erd' | 'landscape';
+  attachmentSlot?: PropertiesPanelProps['attachmentSlot'];
+  attachmentEligibleTypes?: string[];
+  onSelectionChange?: (node: SelectedNode | null) => void;
+}
+
+function EditorShell({
+  readOnly = false,
+  initialDiagramType,
+  attachmentSlot,
+  attachmentEligibleTypes,
+  onSelectionChange,
+}: EditorShellProps) {
+  const api = useApiConfig();
+  const { t } = useI18n();
+  const { resolved: resolvedTheme } = useTheme();
   const [files, setFiles] = useState<DiagramFile[]>([]);
   const [openTabs, setOpenTabs] = useState<DiagramFile[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [sourceText, setSourceText] = useState<string>('');
+  const [hiddenElementsCount, setHiddenElementsCount] = useState(0);
+  const canvasRef = useRef<CanvasHandles | null>(null);
+  const {
+    activeTool,
+    setActiveTool,
+    selectedNode,
+    setSelectedNode,
+    codePanelOpen,
+    setCommandPaletteOpen,
+    toggleCodePanel,
+    setProcessMode,
+  } = useToolStore();
+  const history = useHistory<Record<string, { x: number; y: number }>>();
 
-  // Load available files from the API
   useEffect(() => {
-    fetch('/__daten-viz-api/files')
+    onSelectionChange?.(selectedNode);
+  }, [selectedNode, onSelectionChange]);
+
+  // Load available files
+  useEffect(() => {
+    if (!api.endpoints.filesList) {
+      // Hub mode — files are implicit from the active workspace. Seed a
+      // single synthetic entry so the editor can mount its canvas.
+      const synthetic: DiagramFile[] = [
+        {
+          name: initialDiagramType === 'erd' ? 'schema' : 'process',
+          path: initialDiagramType === 'erd' ? 'schema.dbml' : 'process.bpmn.json',
+          type: initialDiagramType ?? 'bpmn',
+        },
+      ];
+      setFiles(synthetic);
+      setOpenTabs(synthetic);
+      setActiveTab(synthetic[0].path);
+      return;
+    }
+    fetch(api.endpoints.filesList)
       .then((res) => res.json())
       .then((data: DiagramFile[]) => {
         setFiles(data);
-        if (data.length > 0 && openTabs.length === 0) {
-          setOpenTabs([data[0]]);
-          setActiveTab(data[0].path);
-        }
+        setOpenTabs((prev) => {
+          if (prev.length > 0) return prev;
+          return data.slice(0, 1);
+        });
+        setActiveTab((prev) => prev ?? data[0]?.path ?? null);
       })
       .catch(console.error);
-  }, []);
+  }, [api, initialDiagramType]);
 
-  const handleFileSelect = useCallback((file: DiagramFile) => {
-    setOpenTabs((prev) => {
-      if (prev.some((t) => t.path === file.path)) return prev;
-      return [...prev, file];
-    });
-    setActiveTab(file.path);
-  }, []);
+  const activeFile = openTabs.find((tab) => tab.path === activeTab) ?? null;
+  const diagramType = activeFile?.type ?? null;
+
+  // Load process mode sidecar whenever the active BPMN file changes.
+  // Defaults + heuristic are computed server-side so Vite + hub paths
+  // share one source of truth. Dependencies are narrowed to the
+  // specific URLs + auth header so unrelated ApiConfig re-renders don't
+  // re-fire the fetch (kieran-review N5).
+  const modeUrl = api.endpoints.bpmnMode;
+  const hiddenUrl = api.endpoints.bpmnHiddenElements;
+  const authHeader = api.endpoints.authHeader;
+  useEffect(() => {
+    if (!activeFile || activeFile.type !== 'bpmn') return;
+    if (!modeUrl) return;
+    const init = authHeader ? { headers: { Authorization: authHeader } } : undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(modeUrl, init);
+        if (!res.ok) return;
+        const body = (await res.json()) as { mode?: ProcessMode };
+        if (!cancelled && (body.mode === 'simple' || body.mode === 'bpmn')) {
+          setProcessMode(body.mode);
+        }
+      } catch {
+        /* leave the default; heuristic already ran server-side */
+      }
+      if (!hiddenUrl) return;
+      try {
+        const hiddenRes = await fetch(hiddenUrl, init);
+        if (!hiddenRes.ok) return;
+        const body = (await hiddenRes.json()) as { hiddenIds?: string[] };
+        if (!cancelled) {
+          setHiddenElementsCount(body.hiddenIds?.length ?? 0);
+        }
+      } catch {
+        /* non-blocking */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFile, modeUrl, hiddenUrl, authHeader, setProcessMode]);
+
+  const handleModeChange = useCallback(
+    async (mode: ProcessMode): Promise<boolean> => {
+      const modeUrl = api.endpoints.bpmnMode;
+      if (!modeUrl) return false;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (api.endpoints.authHeader) headers.Authorization = api.endpoints.authHeader;
+      try {
+        const res = await fetch(modeUrl, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ mode }),
+        });
+        // Callers rely on the boolean so TopHeader can revert its
+        // optimistic state when the sidecar write fails (kieran B2).
+        return res.ok;
+      } catch (err) {
+        console.error('Failed to persist process mode:', err);
+        return false;
+      }
+    },
+    [api.endpoints.bpmnMode, api.endpoints.authHeader]
+  );
+
+  // Load source when CodePanel opens or active file changes
+  useEffect(() => {
+    if (!codePanelOpen || !activeFile) return;
+    const url = activeFile.type === 'bpmn' ? api.endpoints.bpmnSource : api.endpoints.erdSource;
+    fetch(url)
+      .then((r) => r.text())
+      .then(setSourceText)
+      .catch(console.error);
+  }, [codePanelOpen, activeFile, api]);
 
   const handleTabClose = useCallback((path: string) => {
     setOpenTabs((prev) => {
       const next = prev.filter((t) => t.path !== path);
-      if (next.length === 0) return prev;
-      return next;
+      return next.length === 0 ? prev : next;
     });
     setActiveTab((prev) => {
-      if (prev === path) {
-        const remaining = openTabs.filter((t) => t.path !== path);
-        return remaining[0]?.path ?? prev;
-      }
-      return prev;
+      if (prev !== path) return prev;
+      const remaining = openTabs.filter((t) => t.path !== path);
+      return remaining[0]?.path ?? prev;
     });
   }, [openTabs]);
 
-  const activeFile = openTabs.find((t) => t.path === activeTab);
+  const handleAutoLayout = useCallback(async () => {
+    const prev = canvasRef.current?.snapshotPositions();
+    if (prev) history.record(prev);
+    await canvasRef.current?.applyAutoLayout();
+  }, [history]);
+
+  const handleExport = useCallback(
+    async (format: ExportFormat) => {
+      if (!activeFile) return;
+      const handles = canvasRef.current;
+      if (!handles) return;
+      if (format === 'dbml' && activeFile.type !== 'erd') {
+        window.alert(t.export.error_dbml_erd_only);
+        return;
+      }
+      if (format === 'sql' && activeFile.type !== 'erd') {
+        window.alert(t.export.error_sql_erd_only);
+        return;
+      }
+
+      // Freeze the theme at export-start so a mid-export toggle does not
+      // flip the canvas background between the toPng() prepass and capture.
+      const themeSnapshot = resolvedTheme;
+
+      let body: Blob;
+      const filename = `${activeFile.name}.${format === 'bundle' ? 'zip' : format}`;
+      const authHeaders = api.endpoints.authHeader
+        ? { Authorization: api.endpoints.authHeader }
+        : undefined;
+      const hubPutUrl = activeFile.type === 'bpmn' ? api.endpoints.bpmnPut : api.endpoints.erdPut;
+
+      if (format === 'dbml') {
+        const text = await handles.refreshSource();
+        body = new Blob([text], { type: 'text/plain' });
+      } else if (format === 'mermaid') {
+        if (!hubPutUrl) {
+          window.alert(t.export.error_mermaid_requires_http);
+          return;
+        }
+        const res = await fetch(`${hubPutUrl}/export?format=mermaid`, authHeaders ? { headers: authHeaders } : undefined);
+        if (!res.ok) {
+          window.alert(
+            t.export.error_http_fail({ status: res.status, detail: res.statusText })
+          );
+          return;
+        }
+        body = new Blob([await res.text()], { type: 'text/plain' });
+      } else if (format === 'sql') {
+        if (!api.endpoints.erdPut) {
+          window.alert(t.export.error_sql_requires_http);
+          return;
+        }
+        const res = await fetch(
+          `${api.endpoints.erdPut}/export?format=sql&dialect=postgres`,
+          authHeaders ? { headers: authHeaders } : undefined
+        );
+        if (!res.ok) {
+          const detail = await res.text().catch(() => '');
+          window.alert(
+            t.export.error_http_fail({ status: res.status, detail: `${res.statusText} ${detail}` })
+          );
+          return;
+        }
+        body = new Blob([await res.text()], { type: 'text/plain' });
+      } else if (format === 'png' || format === 'svg') {
+        const liveNodes = handles.getNodes();
+        try {
+          body =
+            format === 'png'
+              ? await renderDiagramPng(liveNodes, { theme: themeSnapshot })
+              : await renderDiagramSvg(liveNodes, { theme: themeSnapshot });
+        } catch (err) {
+          window.alert(
+            t.export.error_http_fail({
+              status: 0,
+              detail: (err as Error).message,
+            })
+          );
+          return;
+        }
+      } else if (format === 'bundle') {
+        // Handoff-Bundle: source + positions + Mermaid rolled into a
+        // deterministic Zip. SVG/PNG skipped here for speed; call
+        // export_bundle via MCP if you need the raster snapshot.
+        const sourceUrl =
+          activeFile.type === 'bpmn'
+            ? api.endpoints.bpmnSource
+            : activeFile.type === 'landscape'
+              ? api.endpoints.landscapeSource ?? ''
+              : api.endpoints.erdSource;
+        const positionsUrl =
+          activeFile.type === 'bpmn'
+            ? api.endpoints.bpmnPositions
+            : activeFile.type === 'landscape'
+              ? api.endpoints.landscapePositions ?? null
+              : api.endpoints.erdPositions;
+        // Mermaid is HTTP-only on the adapter (no Vite endpoint today);
+        // when unavailable the bundle ships source-only.
+        const mermaidUrl = hubPutUrl ? `${hubPutUrl}/export?format=mermaid` : null;
+        try {
+          body = await buildBrowserBundle({
+            diagramType: activeFile.type,
+            diagramName: activeFile.name,
+            sourceUrl,
+            positionsUrl,
+            mermaidUrl,
+            authHeader: api.endpoints.authHeader,
+            toolVersion: '1.1.0-alpha',
+          });
+        } catch (err) {
+          window.alert(
+            t.export.error_http_fail({
+              status: 0,
+              detail: (err as Error).message,
+            })
+          );
+          return;
+        }
+      } else {
+        const text = await handles.refreshSource();
+        body = new Blob([text], { type: 'text/plain' });
+      }
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(body);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    },
+    [activeFile, api, t, resolvedTheme]
+  );
+
+  const handleSaveSource = useCallback(
+    async (next: string) => {
+      if (readOnly) return;
+      await canvasRef.current?.putSource(next);
+    },
+    [readOnly]
+  );
+
+  const handleUpdateNode = useCallback(
+    async (id: string, update: NodeUpdate) => {
+      if (readOnly) return;
+      if (!activeFile || activeFile.type !== 'bpmn') {
+        // ERD node edits land in a later phase (needs DBML mutation semantics).
+        return;
+      }
+      const bpmnPutUrl = api.endpoints.bpmnPut;
+      if (!bpmnPutUrl) {
+        // Preview (Vite) mode — fall back to /bpmn/source round-trip via
+        // the existing raw-source PUT so iterative editing still works.
+        const handles = canvasRef.current;
+        if (!handles) return;
+        const raw = await handles.refreshSource();
+        // Parse-first-then-mutate: a malformed file on disk should not
+        // be silently round-tripped. Abort if Zod rejects the current
+        // state; the user sees their edit no-op rather than corrupting
+        // the file (kieran-review B2).
+        let parsedDoc: unknown;
+        try {
+          parsedDoc = JSON.parse(raw);
+        } catch {
+          return;
+        }
+        const validated = ProcessSchema.safeParse(parsedDoc);
+        if (!validated.success) return;
+        const doc = validated.data;
+        const node = doc.nodes[id];
+        if (!node) return;
+        if (update.label !== undefined) node.label = update.label;
+        if (update.description !== undefined) {
+          if (update.description === '') delete node.description;
+          else node.description = update.description;
+        }
+        if (update.type !== undefined) {
+          node.type = update.type as Process['nodes'][string]['type'];
+        }
+        if (update.status !== undefined) {
+          if (update.status === null) delete node.status;
+          else node.status = update.status;
+        }
+        // `color` lives on NodeUpdate for backwards compat with v1.0 Hub
+        // consumers (@deprecated); we no longer persist it.
+        await handles.putSource(JSON.stringify(doc, null, 2));
+        return;
+      }
+      // Hub mode — fetch, mutate, PUT. This is a read-modify-write cycle:
+      // concurrent edits on the same BPMN will see last-write-wins.
+      // Optimistic concurrency (ETag header) is Phase 6 work once two hub
+      // users actually collaborate.
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (api.endpoints.authHeader) headers.Authorization = api.endpoints.authHeader;
+      const currentRes = await fetch(
+        api.endpoints.bpmnSchema,
+        api.endpoints.authHeader ? { headers: { Authorization: api.endpoints.authHeader } } : undefined
+      );
+      if (!currentRes.ok) throw new Error(`Fetch BPMN failed: ${currentRes.status} ${currentRes.statusText}`);
+      const rawJson = (await currentRes.json()) as unknown;
+      // Hub wraps the payload in `{ ok, data }`; Vite returns the raw
+      // process. Unwrap then validate — never trust the wire (kieran B2).
+      const unwrapped =
+        rawJson && typeof rawJson === 'object' && 'data' in (rawJson as object)
+          ? (rawJson as { data: unknown }).data
+          : rawJson;
+      const validated = ProcessSchema.safeParse(unwrapped);
+      if (!validated.success) {
+        throw new Error(`Hub returned invalid BPMN schema: ${validated.error.message}`);
+      }
+      const processDoc = validated.data;
+      const node = processDoc.nodes?.[id];
+      if (!node) return;
+      if (update.label !== undefined) node.label = update.label;
+      if (update.description !== undefined) {
+        if (update.description === '') delete node.description;
+        else node.description = update.description;
+      }
+      if (update.type !== undefined) node.type = update.type as Process['nodes'][string]['type'];
+      if (update.status !== undefined) {
+        if (update.status === null) {
+          delete (node as { status?: unknown }).status;
+        } else {
+          (node as { status?: string }).status = update.status;
+        }
+      }
+      const putRes = await fetch(bpmnPutUrl, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ process: processDoc }),
+      });
+      if (!putRes.ok) {
+        const detail = await putRes
+          .json()
+          .then((body: { detail?: string; title?: string }) => body?.detail ?? body?.title ?? `${putRes.status}`)
+          .catch(() => `${putRes.status} ${putRes.statusText}`);
+        throw new Error(`PropertiesPanel save failed: ${detail}`);
+      }
+    },
+    [activeFile, api, readOnly]
+  );
+
+  const handleUndo = useCallback(() => {
+    const prev = history.undo();
+    if (prev) canvasRef.current?.applyPositions(prev);
+  }, [history]);
+
+  const handleRedo = useCallback(() => {
+    const next = history.redo();
+    if (next) canvasRef.current?.applyPositions(next);
+  }, [history]);
+
+  useHistoryShortcuts({ onUndo: handleUndo, onRedo: handleRedo });
+
+  const handleAddNodeAt = useCallback(
+    async (type: 'start-event' | 'end-event' | 'task' | 'gateway', pos: { x: number; y: number }) => {
+      if (readOnly) return;
+      const handles = canvasRef.current;
+      if (!handles) return;
+      const raw = await handles.refreshSource();
+      let doc: { nodes: Record<string, Record<string, unknown>>; flows: unknown[]; format?: string };
+      try {
+        doc = JSON.parse(raw);
+      } catch {
+        doc = { format: 'viso-bpmn-v1', nodes: {}, flows: [] };
+      }
+      if (!doc.nodes) doc.nodes = {};
+      if (!doc.flows) doc.flows = [];
+      // Enforce the same "max 1 start-event" invariant as `process_add_node`
+      // so the UI and MCP agents never diverge on what a valid BPMN looks like.
+      if (type === 'start-event') {
+        const existing = Object.entries(doc.nodes).find(
+          ([, n]) => (n as { type?: string }).type === 'start-event'
+        );
+        if (existing) {
+          window.alert(t.validation.single_start_event({ existing: existing[0] }));
+          setActiveTool('pointer');
+          return;
+        }
+      }
+      const baseId = typePrefix(type);
+      let suffix = 1;
+      let id = `${baseId}_${suffix}`;
+      while (doc.nodes[id]) {
+        suffix += 1;
+        id = `${baseId}_${suffix}`;
+      }
+      doc.nodes[id] = {
+        type,
+        label: defaultLabel(type),
+        ...(type === 'gateway' ? { gatewayType: 'exclusive' } : {}),
+      };
+      await handles.putSource(JSON.stringify(doc, null, 2));
+
+      // Persist the clicked pane position so the new node lands where the
+      // user clicked instead of at 0,0 from the ELK pass.  The positions
+      // sidecar only exists in Vite mode (`/__viso-api/bpmn/positions`);
+      // hub adapters don't surface it yet, so skip the write and let ELK
+      // place the node on next load.
+      const isVitePositions = api.endpoints.bpmnPositions.startsWith('/__viso-api/');
+      if (isVitePositions) {
+        try {
+          const posUrl = api.endpoints.bpmnPositions;
+          const current = await fetch(posUrl).then((r) => (r.ok ? r.json() : {}));
+          await fetch(posUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...current, [id]: pos }),
+          });
+        } catch {
+          /* positions are a nice-to-have; ELK will reflow on next load */
+        }
+      }
+
+      // Reset the tool so subsequent clicks don't keep spawning nodes.
+      setActiveTool('pointer');
+    },
+    [readOnly, api, setActiveTool, t]
+  );
+
+  const bpmnPaneClick = useMemo(() => {
+    if (readOnly) return undefined;
+    if (activeTool === 'start-event' || activeTool === 'end-event' || activeTool === 'task' || activeTool === 'gateway') {
+      return (pos: { x: number; y: number }) => handleAddNodeAt(activeTool, pos);
+    }
+    return undefined;
+  }, [activeTool, handleAddNodeAt, readOnly]);
+
+  // Palette-to-canvas Pointer-Events drag-and-drop (iPad-safe). Converts
+  // the pointer's client coordinates into canvas-relative positions by
+  // hit-testing the pane's bounding rect, then dispatches the same
+  // handleAddNodeAt path that click-to-place uses.
+  const handleSpawnFromPointer = useCallback(
+    (type: string, clientPos: { x: number; y: number }) => {
+      if (readOnly) return;
+      if (diagramType !== 'bpmn') return;
+      if (type !== 'start-event' && type !== 'end-event' && type !== 'task' && type !== 'gateway') {
+        return;
+      }
+      const pane = document.querySelector('[data-viso-canvas-pane="bpmn"]');
+      if (!pane) return;
+      const rect = pane.getBoundingClientRect();
+      handleAddNodeAt(type, { x: clientPos.x - rect.left, y: clientPos.y - rect.top });
+    },
+    [readOnly, diagramType, handleAddNodeAt]
+  );
+
+  useSpawnListener({
+    onSpawn: handleSpawnFromPointer,
+    enabled: !readOnly && diagramType === 'bpmn',
+  });
+
+  const actions = useMemo(
+    () =>
+      buildDefaultActions({
+        onAddNode: (type) => {
+          if (type === 'start-event' || type === 'end-event' || type === 'task' || type === 'gateway') {
+            setActiveTool(type);
+          }
+        },
+        onExport: handleExport,
+        onToggleCode: toggleCodePanel,
+        onAutoLayout: handleAutoLayout,
+        onUndo: handleUndo,
+        onRedo: handleRedo,
+        onSwitchDiagram: files.length > 1 ? () => setCommandPaletteOpen(true) : undefined,
+      }),
+    [handleExport, toggleCodePanel, handleAutoLayout, handleUndo, handleRedo, files.length, setCommandPaletteOpen, setActiveTool]
+  );
+
+  const fileName = activeFile?.name ?? null;
 
   return (
-    <TooltipProvider>
-      <SidebarProvider defaultOpen={true}>
-        <AppSidebar
-          files={files}
-          activeFile={activeTab}
-          onFileSelect={handleFileSelect}
+    <div className="flex flex-col h-screen bg-background text-foreground">
+      <TopHeader
+        fileName={fileName}
+        badge={files.length > 0 ? 'HYBRID' : undefined}
+        onAutoLayout={handleAutoLayout}
+        onExport={handleExport}
+        showModeToggle={diagramType === 'bpmn'}
+        onModeChange={handleModeChange}
+        hiddenElementsCount={hiddenElementsCount}
+      />
+      {openTabs.length > 1 && (
+        <DiagramTabs
+          tabs={openTabs.map((f) => ({ file: f }))}
+          activeTab={activeTab}
+          onTabSelect={setActiveTab}
+          onTabClose={handleTabClose}
         />
-        <SidebarInset className="flex flex-col h-screen min-h-0">
-          <DiagramTabs
-            tabs={openTabs.map((f) => ({ file: f }))}
-            activeTab={activeTab}
-            onTabSelect={setActiveTab}
-            onTabClose={handleTabClose}
-          />
-          <div className="relative flex-1 min-h-0">
-            {activeFile?.type === 'bpmn' ? <BpmnCanvas /> : <ErdCanvas />}
+      )}
+      <div className="flex flex-1 min-h-0">
+        <ToolPalette diagramType={diagramType} />
+        <main className="flex-1 flex flex-col min-w-0" role="main" aria-label="Diagram canvas">
+          <div
+            className="flex-1 min-h-0 relative"
+            role="list"
+            aria-label={
+              diagramType === 'bpmn'
+                ? 'BPMN process nodes'
+                : diagramType === 'erd'
+                  ? 'ERD tables'
+                  : diagramType === 'landscape'
+                    ? 'System landscape nodes'
+                    : 'Empty canvas'
+            }
+          >
+            {diagramType === 'bpmn' ? (
+              <BpmnCanvas canvasRef={canvasRef} onSelect={setSelectedNode} onPaneClick={bpmnPaneClick} />
+            ) : diagramType === 'erd' ? (
+              <ErdCanvas canvasRef={canvasRef} onSelect={setSelectedNode} />
+            ) : diagramType === 'landscape' ? (
+              <LandscapeCanvas canvasRef={canvasRef} onSelect={setSelectedNode} />
+            ) : (
+              <CanvasEmpty />
+            )}
           </div>
-        </SidebarInset>
-      </SidebarProvider>
+          {codePanelOpen && canvasRef.current && (
+            <CodePanel
+              title={canvasRef.current.sourceTitle}
+              language={canvasRef.current.language}
+              source={sourceText}
+              onSave={handleSaveSource}
+              validate={canvasRef.current.validateSource}
+            />
+          )}
+        </main>
+        <PropertiesPanel
+          diagramMeta={{
+            name: fileName ?? undefined,
+            format: diagramType === 'bpmn' ? 'viso-bpmn-v1' : diagramType === 'erd' ? 'viso-erd-v1' : undefined,
+            itemCount: selectedNode ? undefined : files.length,
+            itemLabel: 'Open Files',
+          }}
+          onUpdateNode={readOnly ? undefined : handleUpdateNode}
+          attachmentSlot={attachmentSlot}
+          attachmentEligibleTypes={attachmentEligibleTypes}
+        />
+      </div>
+      <FooterBar />
+      <CommandPalette diagramType={diagramType} actions={actions} />
+    </div>
+  );
+}
+
+function typePrefix(type: 'start-event' | 'end-event' | 'task' | 'gateway'): string {
+  switch (type) {
+    case 'start-event':
+      return 'start';
+    case 'end-event':
+      return 'end';
+    case 'task':
+      return 'task';
+    case 'gateway':
+      return 'gateway';
+  }
+}
+
+function defaultLabel(type: 'start-event' | 'end-event' | 'task' | 'gateway'): string {
+  switch (type) {
+    case 'start-event':
+      return 'Start';
+    case 'end-event':
+      return 'End';
+    case 'task':
+      return 'Neuer Task';
+    case 'gateway':
+      return 'Entscheidung?';
+  }
+}
+
+function CanvasEmpty() {
+  const { t } = useI18n();
+  return (
+    <div className="h-full w-full flex items-center justify-center">
+      <div className="rounded-lg border-dashed border-2 border-muted p-6 max-w-md text-center space-y-2 text-sm text-muted-foreground">
+        <p className="text-base font-semibold text-foreground">{t.empty.canvas_title}</p>
+        <p>{t.empty.canvas_hint}</p>
+      </div>
+    </div>
+  );
+}
+
+function FooterBar() {
+  const { t } = useI18n();
+  return (
+    <footer className="border-t px-4 py-2 bg-background/60 text-[11px] font-mono text-muted-foreground flex items-center justify-between">
+      <span>{t.footer.tagline}</span>
+      <span className="italic">{t.footer.tagline_hint}</span>
+    </footer>
+  );
+}
+
+export function App() {
+  return (
+    <TooltipProvider>
+      <I18nProvider locale="de">
+        <ToolStoreProvider>
+          <EditorShell />
+        </ToolStoreProvider>
+      </I18nProvider>
     </TooltipProvider>
   );
 }
+
+export { EditorShell };
+export type { EditorShellProps };

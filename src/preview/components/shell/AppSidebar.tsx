@@ -17,7 +17,7 @@ import { Table2, GitBranch, FileJson } from 'lucide-react';
 export interface DiagramFile {
   name: string;
   path: string;
-  type: 'erd' | 'bpmn';
+  type: 'erd' | 'bpmn' | 'landscape';
 }
 
 interface AppSidebarProps {
@@ -39,7 +39,7 @@ export function AppSidebar({ files, activeFile, onFileSelect, selectedElement }:
             <FileJson className="h-3.5 w-3.5 text-primary" />
           </div>
           <span className="font-mono text-sm font-semibold text-sidebar-foreground">
-            Daten-Viz
+            viso
           </span>
         </div>
       </SidebarHeader>

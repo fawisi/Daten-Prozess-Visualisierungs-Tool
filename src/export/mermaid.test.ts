@@ -82,4 +82,16 @@ describe('toMermaid', () => {
     const result = toMermaid(diagram);
     expect(result).toContain('"NOT NULL"');
   });
+
+  it('wraps body in %%{init}%% when theme option is set', () => {
+    const diagram: Diagram = {
+      ...emptyDiagram(),
+      tables: { t: { columns: [{ name: 'id', type: 'int', primary: true }] } },
+    };
+    const result = toMermaid(diagram, { theme: 'light' });
+    expect(result.startsWith('%%{init:')).toBe(true);
+    expect(result).toContain('"theme": "base"');
+    expect(result).toContain('"background":"#FFFFFF"');
+    expect(result).toContain('erDiagram');
+  });
 });

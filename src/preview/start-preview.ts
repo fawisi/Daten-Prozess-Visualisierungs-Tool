@@ -1,7 +1,7 @@
 import { createServer } from 'vite';
 import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
-import { datenVizPlugin } from './vite-plugin.js';
+import { visoPlugin } from './vite-plugin.js';
 
 export async function startPreview(filePath: string) {
   const absPath = resolve(filePath);
@@ -10,7 +10,7 @@ export async function startPreview(filePath: string) {
     root: resolve(import.meta.dirname || __dirname, '.'),
     plugins: [
       react(),
-      datenVizPlugin(absPath),
+      visoPlugin(absPath),
     ],
     server: {
       host: '127.0.0.1',
