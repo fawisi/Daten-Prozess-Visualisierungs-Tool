@@ -1,0 +1,23 @@
+{
+  "format": "viso-bpmn-v1",
+  "name": "Order Fulfillment",
+  "nodes": {
+    "start": { "type": "start-event", "label": "Bestellung eingegangen" },
+    "check_stock": { "type": "task", "label": "Lagerbestand pruefen" },
+    "stock_ok": { "type": "gateway", "label": "Verfuegbar?", "gatewayType": "exclusive" },
+    "process_payment": { "type": "task", "label": "Zahlung verarbeiten" },
+    "ship": { "type": "task", "label": "Versand auslosen" },
+    "notify_oos": { "type": "task", "label": "Kunde informieren" },
+    "end_done": { "type": "end-event", "label": "Auftrag abgeschlossen" },
+    "end_cancelled": { "type": "end-event", "label": "Auftrag storniert" }
+  },
+  "flows": [
+    { "from": "start", "to": "check_stock" },
+    { "from": "check_stock", "to": "stock_ok" },
+    { "from": "stock_ok", "to": "process_payment", "label": "Ja" },
+    { "from": "stock_ok", "to": "notify_oos", "label": "Nein" },
+    { "from": "process_payment", "to": "ship" },
+    { "from": "ship", "to": "end_done" },
+    { "from": "notify_oos", "to": "end_cancelled" }
+  ]
+}

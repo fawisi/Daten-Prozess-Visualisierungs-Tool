@@ -1,0 +1,17 @@
+{
+  "format": "viso-landscape-v1",
+  "name": "Sample E-Commerce Landscape",
+  "nodes": {
+    "customer": { "kind": "person", "label": "Kunde", "description": "Bestellt Produkte im Online-Shop" },
+    "shop": { "kind": "system", "label": "Online-Shop", "description": "Web-Frontend + Order-Service" },
+    "payments": { "kind": "external", "label": "Payment-Provider", "description": "Stripe / Mollie" },
+    "warehouse": { "kind": "external", "label": "Lagerlogistik", "description": "3PL-System fuer Versand" },
+    "analytics": { "kind": "external", "label": "Analytics", "description": "Posthog / Plausible" }
+  },
+  "relations": [
+    { "from": "customer", "to": "shop", "label": "bestellt ueber" },
+    { "from": "shop", "to": "payments", "label": "bucht Zahlung" },
+    { "from": "shop", "to": "warehouse", "label": "loest Versand aus" },
+    { "from": "shop", "to": "analytics", "label": "sendet Events" }
+  ]
+}

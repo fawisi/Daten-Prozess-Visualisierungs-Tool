@@ -11,3 +11,8 @@ dist/
 *.landscape.mode.json
 .claude/scheduled_tasks.lock
 .claude/*.lock
+
+# Bundled fixtures must ship with the package (negate the patterns above).
+!fixtures/**/*.erd.json
+!fixtures/**/*.bpmn.json
+!fixtures/**/*.landscape.json
