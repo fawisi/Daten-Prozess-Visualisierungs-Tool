@@ -219,6 +219,11 @@ function NodeProperties({
           />
         </Field>
 
+        {/* MA-1: attachment-slot only renders when the Hub explicitly
+            injects one via the `attachmentSlot` prop. The standalone
+            Vite-mode editor showed a Screen-Recording-Stub button that
+            did nothing — confusing during the user-test. The slot is
+            still entirely opt-in for Hub consumers. */}
         {isAttachmentEligible && attachmentSlot && (
           <Field label={t.properties.attachments}>
             {attachmentSlot({
@@ -226,17 +231,6 @@ function NodeProperties({
               nodeType: rawNodeType,
               diagramType: node.diagramType,
             })}
-          </Field>
-        )}
-
-        {isAttachmentEligible && !attachmentSlot && (
-          <Field label={t.properties.attachments}>
-            <Button variant="default" size="sm" className="w-full">
-              Screen-Recording starten
-            </Button>
-            <p className="text-[10px] text-muted-foreground mt-1.5">
-              Hub-Integration injiziert eigene Komponente via <code className="font-mono">attachmentSlot</code>.
-            </p>
           </Field>
         )}
       </div>

@@ -205,7 +205,7 @@ function ErdCanvas({
         />
         <Controls />
       </ReactFlow>
-      {isEmpty && <EmptyState />}
+      {isEmpty && <EmptyState message="Noch keine Tabellen. Klicke das Tabellen-Werkzeug (Shortcut 5) und dann auf den Canvas, um deine erste Tabelle anzulegen." />}
       <StatusIndicator status={status} />
     </div>
   );
@@ -315,7 +315,7 @@ function BpmnCanvas({
           </defs>
         </svg>
       </ReactFlow>
-      {isEmpty && <EmptyState message="No process nodes yet. Use process_add_node to create nodes." />}
+      {isEmpty && <EmptyState message="Noch keine Prozess-Knoten. Klicke das Task-Werkzeug (Shortcut 3) und dann auf den Canvas, um deinen ersten Knoten zu setzen." />}
       <StatusIndicator status={status} />
     </div>
   );
@@ -419,7 +419,7 @@ function LandscapeCanvas({
         <Controls />
       </ReactFlow>
       {isEmpty && (
-        <EmptyState message="No landscape nodes yet. Use landscape_add_node to create them." />
+        <EmptyState message="Noch keine Landscape-Knoten. Klicke ein Landscape-Werkzeug (Shortcut 6 bis 0) und dann auf den Canvas." />
       )}
       <StatusIndicator status={status} />
     </div>
@@ -1018,7 +1018,23 @@ function EditorShell({
     <div className="flex flex-col h-screen bg-background text-foreground">
       <TopHeader
         fileName={fileName}
-        badge={files.length > 0 ? 'HYBRID' : undefined}
+        badge={
+          // MA-12: dynamic badge reflecting the active mode. The Hub
+          // sets `erdPut` to a workspace-scoped URL — when that's
+          // present we know we're in Hub-mode regardless of which
+          // diagram is currently open.
+          api.endpoints.erdPut
+            ? 'HUB'
+            : diagramType === 'erd'
+              ? 'ERD'
+              : diagramType === 'bpmn'
+                ? 'BPMN'
+                : diagramType === 'landscape'
+                  ? 'LANDSCAPE'
+                  : files.length > 0
+                    ? 'HYBRID'
+                    : undefined
+        }
         onAutoLayout={handleAutoLayout}
         onExport={handleExport}
         showModeToggle={diagramType === 'bpmn'}
