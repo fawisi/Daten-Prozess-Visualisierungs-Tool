@@ -468,7 +468,10 @@ function EditorShell({
         setFiles(data);
         setOpenTabs((prev) => {
           if (prev.length > 0) return prev;
-          return data.slice(0, 1);
+          // v1.1.1 — CR-1 Fix: ALLE Files initial als offene Tabs.
+          // Vorher data.slice(0, 1) — User konnte nicht zu BPMN/Landscape
+          // wechseln, weil die anderen 2 Files niemals als Tab erschienen.
+          return data;
         });
         setActiveTab((prev) => prev ?? data[0]?.path ?? null);
       })
@@ -918,6 +921,8 @@ function EditorShell({
     () =>
       buildDefaultActions({
         onAddNode: (type) => {
+          // BPMN-Tools aktivieren das passende Drawing-Tool. ERD und Landscape
+          // Add-Tools werden in Step 1.6 hinzugefuegt.
           if (type === 'start-event' || type === 'end-event' || type === 'task' || type === 'gateway') {
             setActiveTool(type);
           }
@@ -927,9 +932,16 @@ function EditorShell({
         onAutoLayout: handleAutoLayout,
         onUndo: handleUndo,
         onRedo: handleRedo,
-        onSwitchDiagram: files.length > 1 ? () => setCommandPaletteOpen(true) : undefined,
+        // v1.1.1 CR-1: Vorher rief sich onSwitchDiagram selbst auf
+        // (setCommandPaletteOpen(true)) — das war ein Recursion-Stub. Jetzt
+        // rotiert der Tab-Switch durch die offenen Tabs.
+        onSwitchDiagram: openTabs.length > 1 ? () => {
+          const idx = openTabs.findIndex((t) => t.path === activeTab);
+          const nextIdx = (idx + 1) % openTabs.length;
+          setActiveTab(openTabs[nextIdx]?.path ?? null);
+        } : undefined,
       }),
-    [handleExport, toggleCodePanel, handleAutoLayout, handleUndo, handleRedo, files.length, setCommandPaletteOpen, setActiveTool]
+    [handleExport, toggleCodePanel, handleAutoLayout, handleUndo, handleRedo, openTabs, activeTab, setActiveTab, setActiveTool]
   );
 
   const fileName = activeFile?.name ?? null;
@@ -945,7 +957,10 @@ function EditorShell({
         onModeChange={handleModeChange}
         hiddenElementsCount={hiddenElementsCount}
       />
-      {openTabs.length > 1 && (
+      {/* v1.1.1 CR-1: Tabs sichtbar sobald >= 1 offen (vorher >= 2). Damit
+          sieht der User auch in Single-File-Setups den File-Kontext und
+          erkennt, dass weitere Files via Sidebar verfuegbar sind. */}
+      {openTabs.length > 0 && (
         <DiagramTabs
           tabs={openTabs.map((f) => ({ file: f }))}
           activeTab={activeTab}
