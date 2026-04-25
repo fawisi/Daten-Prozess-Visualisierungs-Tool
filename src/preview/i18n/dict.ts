@@ -35,10 +35,19 @@ export interface Dict {
   toolPalette: {
     pointer: string;
     pan: string;
+    // BPMN
     task: string;
     gateway: string;
     start_event: string;
     end_event: string;
+    // ERD (v1.1.1 — CR-2)
+    table: string;
+    // Landscape (v1.1.1 — CR-3)
+    lc_person: string;
+    lc_system: string;
+    lc_external: string;
+    lc_container: string;
+    lc_database: string;
   };
   topHeader: {
     app_name: string;
@@ -116,6 +125,12 @@ export const de: Dict = {
     gateway: 'Entscheidung',
     start_event: 'Start',
     end_event: 'Ende',
+    table: 'Tabelle',
+    lc_person: 'Person',
+    lc_system: 'System',
+    lc_external: 'Externes System',
+    lc_container: 'Container',
+    lc_database: 'Datenbank',
   },
   topHeader: {
     app_name: 'viso-mcp',

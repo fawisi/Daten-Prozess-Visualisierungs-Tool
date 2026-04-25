@@ -1,17 +1,24 @@
 import React from 'react';
-import { MousePointer2, Hand, Circle, Square, Diamond, CircleDot } from 'lucide-react';
+import { MousePointer2, Hand, Circle, Square, Diamond, CircleDot, Table2, User, Box, ExternalLink, Container, Database } from 'lucide-react';
 import { useToolStore, type Tool } from '@/state/useToolStore.js';
 import { useI18n } from '@/i18n/useI18n.js';
 import { usePaletteDrag } from '@/hooks/usePaletteDrag.js';
 import { cn } from '@/lib/utils.js';
+import type { DiagramType } from '../../../types.js';
+
+type ToolTranslationKey =
+  | 'pointer' | 'pan'
+  | 'start_event' | 'end_event' | 'task' | 'gateway'
+  | 'table'
+  | 'lc_person' | 'lc_system' | 'lc_external' | 'lc_container' | 'lc_database';
 
 interface ToolDef {
   id: Tool;
-  translationKey: 'pointer' | 'pan' | 'start_event' | 'end_event' | 'task' | 'gateway';
+  translationKey: ToolTranslationKey;
   shortcut: string;
   icon: React.ComponentType<{ className?: string }>;
   group: 'cursor' | 'shape';
-  diagramType?: 'bpmn' | 'erd';
+  diagramType?: DiagramType;
   /**
    * When set, the tool is hidden in `simple` process mode. Today all
    * BPMN v1.0 elements are simple-mode-safe, but once inclusive / parallel
@@ -31,7 +38,7 @@ const TOOLS: ToolDef[] = [
 ];
 
 interface ToolPaletteProps {
-  diagramType: 'bpmn' | 'erd' | null;
+  diagramType: DiagramType | null;
 }
 
 export function ToolPalette({ diagramType }: ToolPaletteProps) {

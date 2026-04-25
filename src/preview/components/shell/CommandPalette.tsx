@@ -14,6 +14,7 @@ import {
   Files,
 } from 'lucide-react';
 import { useToolStore } from '@/state/useToolStore.js';
+import type { DiagramType } from '../../../types.js';
 
 export interface CommandAction {
   id: string;
@@ -22,12 +23,12 @@ export interface CommandAction {
   icon?: React.ComponentType<{ className?: string }>;
   shortcut?: string;
   group: string;
-  when?: 'bpmn' | 'erd' | 'any';
+  when?: DiagramType | 'any';
   run: () => void;
 }
 
 interface CommandPaletteProps {
-  diagramType: 'bpmn' | 'erd' | null;
+  diagramType: DiagramType | null;
   actions: CommandAction[];
 }
 
