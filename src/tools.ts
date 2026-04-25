@@ -81,7 +81,12 @@ function reconstructDiagramOrNull(rawDatabase: unknown): Diagram | null {
   }
 }
 
-export function registerTools(server: McpServer, store: ErdStore) {
+export function registerTools(server: McpServer, initialStore: ErdStore) {
+  // store is mutable so set_dbml can swap a legacy JSON-backed DiagramStore
+  // for a fresh DbmlStore after auto-migration (CR-6). Subsequent tool
+  // invocations resolve through this binding so they stay coherent with
+  // the new backing file.
+  let store: ErdStore = initialStore;
   // --- diagram_create_table ---
   server.registerTool(
     'diagram_create_table',
@@ -386,15 +391,33 @@ export function registerTools(server: McpServer, store: ErdStore) {
       },
     },
     async ({ dbml }) => {
-      // Only DbmlStore has a .dbml-backed file path. For legacy JSON stores
-      // we reject rather than silently converting the backing format.
+      // Auto-migrate a legacy JSON-backed store on first set_dbml call so
+      // agents and the README quickstart converge on the same canonical
+      // .dbml format without forcing a manual `npx viso-mcp migrate`
+      // step (CR-6). On success the in-process store reference is swapped
+      // to a DbmlStore pointing at the freshly written .dbml file.
+      let migrationInfo: {
+        migrated: boolean;
+        oldPath?: string;
+        newPath?: string;
+      } = { migrated: false };
       if (!(store instanceof DbmlStore)) {
-        return problemResult({
-          type: 'https://viso-mcp.dev/problems/unsupported-backing-store',
-          title: 'set_dbml requires a DBML-backed store',
-          detail:
-            'The current ERD file is not a .dbml file. Run `npx viso-mcp migrate <file>` to switch to DBML first.',
-        });
+        try {
+          const { migrateFile } = await import('./migrate-cli.js');
+          const result = await migrateFile(store.filePath);
+          store = new DbmlStore(result.dbmlPath);
+          migrationInfo = {
+            migrated: true,
+            oldPath: result.sourcePath,
+            newPath: result.dbmlPath,
+          };
+        } catch (err) {
+          return problemResult({
+            type: 'https://viso-mcp.dev/problems/migration-failed',
+            title: 'Auto-migration to DBML failed',
+            detail: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
 
       let parsedRaw: unknown;
@@ -453,6 +476,7 @@ export function registerTools(server: McpServer, store: ErdStore) {
             relationCount: tmpDiagram.relations.length,
             prunedPositions: prunedIds,
             prunedStatuses,
+            ...(migrationInfo.migrated ? migrationInfo : {}),
           },
           null,
           2
