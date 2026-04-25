@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DiagramTypeEnum } from '../types.js';
 
 /**
  * Handoff-Bundle manifest (`.viso.json` inside the Zip / directory).
@@ -9,13 +10,17 @@ import { z } from 'zod';
  *
  * Security (plan Req #2 — Zip-Slip + JSON-Bomb): entries accepted by the
  * importer are whitelisted here. Any other path is rejected.
+ *
+ * v1.1.1: `diagramType` zieht jetzt aus dem zentralen `DiagramTypeEnum`
+ * in `src/types.ts` (Plan AD-1 — Single Source of Truth fuer alle
+ * UI- + Tool-Code-Stellen).
  */
 
 export const BUNDLE_SCHEMA_VERSION = '1.1';
 
 export const BundleManifestSchema = z.object({
   version: z.literal(BUNDLE_SCHEMA_VERSION),
-  diagramType: z.enum(['erd', 'bpmn', 'landscape']),
+  diagramType: DiagramTypeEnum,
   name: z.string().max(256),
   /** Mode sidecar snapshot at export time. */
   mode: z.enum(['simple', 'bpmn', 'l1', 'l2']).optional(),

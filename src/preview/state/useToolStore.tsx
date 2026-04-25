@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import type { ProcessMode } from '../../bpmn/mode-heuristic.js';
+import type { DiagramType, Tool } from '../../types.js';
 
-export type Tool = 'pointer' | 'pan' | 'start-event' | 'end-event' | 'task' | 'gateway';
-
-export type DiagramType = 'erd' | 'bpmn' | 'landscape';
+// Re-Exports: Stelle ist historisch importiert worden (App.tsx, Canvas-Komponenten).
+// Single Source of Truth liegt jetzt in src/types.ts (Plan v1.1.1 AD-1).
+export type { DiagramType, Tool };
 
 // Re-export so call sites can import from one place; the type itself
 // is declared alongside the heuristic that produces it (kieran N4).
