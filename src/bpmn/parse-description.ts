@@ -5,19 +5,23 @@ import { emptyProcess, ProcessSchema } from './schema.js';
 import type { Process } from './schema.js';
 
 /**
- * BPMN narrative parser (plan R5). Focuses on the common v1.0 use
- * case: a consultant dictates a sequential process with an XOR-branch.
+ * BPMN narrative parser. v1.1 shipped 4 sequence-flow patterns; v1.1.1
+ * adds 5 DE patterns surfaced by the 2026-04-25 user test (CR-5):
+ * "übergibt an", "ruft für", "sendet via", "Nach X folgt Y", and
+ * action verbs ("prüft" / "verarbeitet"). Each pattern resolves to one
+ * or two task nodes plus a flow.
  *
- * Patterns (v1.1):
- *  1. "Zuerst {X}" / "Als erstes {X}"     → start-event + task X
- *  2. "Dann {X}" / "Danach {X}"           → task X connected in sequence
- *  3. "Wenn {COND} dann {A} sonst {B}"    → XOR-gateway 'COND?',
- *                                           yes-label {A}, no-label {B}
+ * Patterns (v1.1.1):
+ *  1. "Zuerst {X}"                        → start-event + task X
+ *  2. "Dann {X}"                          → task X connected in sequence
+ *  3. "Wenn {COND} dann {A} sonst {B}"    → XOR-gateway 'COND?'
  *  4. "Am Ende / Zuletzt {X}"             → task X + end-event
- *
- * This intentionally ships narrower than the landscape parser — BPMN
- * narrative varies far more by domain + language and the remaining
- * patterns land in v1.2 once we have corpus signal.
+ *  5. "{A} übergibt {payload} an {B}"     → task A -> task B (label = payload)
+ *  6. "{A} ruft {service} für {B}"        → task A -> task B (label = service)
+ *  7. "{A} sendet {msg} via {channel}"    → task A -> task B=channel (label = msg)
+ *  8. "Nach {A} folgt {B}"                → task A -> task B
+ *  9. "{A} prüft {target}"                → task labelled "{A} prüft {target}"
+ * 10. "{A} verarbeitet {target}"          → task labelled "{A} verarbeitet {target}"
  */
 
 const FIRST = /^(?:Zuerst|Als\s+erstes|Zunächst|Anfangs)\s+(.+?)[.,;]?$/iu;
@@ -26,9 +30,21 @@ const IF_THEN_ELSE =
   /^Wenn\s+(.+?)[,]?\s+dann\s+(.+?)[,]?\s+sonst\s+(.+?)[.,;]?$/iu;
 const LAST = /^(?:Am\s+Ende|Zuletzt|Schließlich|Abschließend)\s+(.+?)[.,;]?$/iu;
 
+// v1.1.1 DE-Patterns
+const UEBERGIBT =
+  /^([\wÄÖÜäöüß-]+)\s+(?:übergibt|uebergibt)\s+(.+?)\s+an\s+([\wÄÖÜäöüß-]+)[.,;]?$/iu;
+const RUFT_FUER =
+  /^([\wÄÖÜäöüß-]+)\s+ruft\s+(.+?)\s+(?:für|fuer)\s+([\wÄÖÜäöüß-]+)[.,;]?$/iu;
+const SENDET_VIA =
+  /^([\wÄÖÜäöüß-]+)\s+sendet\s+(.+?)\s+via\s+([\wÄÖÜäöüß-]+)[.,;]?$/iu;
+const NACH_FOLGT =
+  /^Nach\s+([\wÄÖÜäöüß-]+)\s+(?:folgt|kommt)\s+([\wÄÖÜäöüß-]+)[.,;]?$/iu;
+const PRUEFT = /^([\wÄÖÜäöüß-]+)\s+(?:prüft|prueft)\s+(.+?)[.,;]?$/iu;
+const VERARBEITET = /^([\wÄÖÜäöüß-]+)\s+verarbeitet\s+(.+?)[.,;]?$/iu;
+
 export interface BpmnParseResult {
   process: Process;
-  engineUsed: 'regex' | 'llm';
+  engineUsed: 'regex' | 'llm' | 'hybrid';
   warnings: string[];
   stats: { patternHits: Record<string, number>; nodesAdded: number; flowsAdded: number };
   unparsedSpans: string[];
@@ -156,6 +172,79 @@ export function parseProcessDescription(
       stats.patternHits.last = (stats.patternHits.last ?? 0) + 1;
       continue;
     }
+
+    // v1.1.1: "{A} übergibt {payload} an {B}" — task A → task B labelled payload
+    const mUebergibt = line.match(UEBERGIBT);
+    if (mUebergibt) {
+      matched = true;
+      const fromId = ensureTask(mUebergibt[1].trim());
+      const toId = ensureTask(mUebergibt[3].trim());
+      connect(fromId, toId, mUebergibt[2].trim());
+      lastId = toId;
+      stats.patternHits.uebergibt = (stats.patternHits.uebergibt ?? 0) + 1;
+      continue;
+    }
+
+    // v1.1.1: "{A} ruft {service} für {B}" — call-pattern, label = service
+    const mRuft = line.match(RUFT_FUER);
+    if (mRuft) {
+      matched = true;
+      const fromId = ensureTask(mRuft[1].trim());
+      const toId = ensureTask(mRuft[3].trim());
+      connect(fromId, toId, mRuft[2].trim());
+      lastId = toId;
+      stats.patternHits.ruft_fuer = (stats.patternHits.ruft_fuer ?? 0) + 1;
+      continue;
+    }
+
+    // v1.1.1: "{A} sendet {msg} via {channel}" — channel becomes the task target
+    const mSendet = line.match(SENDET_VIA);
+    if (mSendet) {
+      matched = true;
+      const fromId = ensureTask(mSendet[1].trim());
+      const toId = ensureTask(mSendet[3].trim());
+      connect(fromId, toId, mSendet[2].trim());
+      lastId = toId;
+      stats.patternHits.sendet_via = (stats.patternHits.sendet_via ?? 0) + 1;
+      continue;
+    }
+
+    // v1.1.1: "Nach {A} folgt {B}" — explicit sequence
+    const mNach = line.match(NACH_FOLGT);
+    if (mNach) {
+      matched = true;
+      const fromId = ensureTask(mNach[1].trim());
+      const toId = ensureTask(mNach[2].trim());
+      connect(fromId, toId);
+      lastId = toId;
+      stats.patternHits.nach_folgt = (stats.patternHits.nach_folgt ?? 0) + 1;
+      continue;
+    }
+
+    // v1.1.1: "{A} prüft {target}" — single task labelled with the verb phrase
+    const mPrueft = line.match(PRUEFT);
+    if (mPrueft) {
+      matched = true;
+      const taskId = ensureTask(`${mPrueft[1].trim()} prüft ${mPrueft[2].trim()}`);
+      if (lastId) connect(lastId, taskId);
+      lastId = taskId;
+      stats.patternHits.prueft = (stats.patternHits.prueft ?? 0) + 1;
+      continue;
+    }
+
+    // v1.1.1: "{A} verarbeitet {target}" — single task
+    const mVerarbeitet = line.match(VERARBEITET);
+    if (mVerarbeitet) {
+      matched = true;
+      const taskId = ensureTask(
+        `${mVerarbeitet[1].trim()} verarbeitet ${mVerarbeitet[2].trim()}`
+      );
+      if (lastId) connect(lastId, taskId);
+      lastId = taskId;
+      stats.patternHits.verarbeitet = (stats.patternHits.verarbeitet ?? 0) + 1;
+      continue;
+    }
+
     if (!matched) unparsed.push(line);
   }
 
