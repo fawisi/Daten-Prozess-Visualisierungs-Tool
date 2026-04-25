@@ -52,8 +52,104 @@ describe('parseDiagramDescription — ERD narrative', () => {
 
   it('collects unparsedSpans for lines with no match', () => {
     const { unparsedSpans } = parseDiagramDescription(
-      'Tabelle users hat id. Dies ist kein Tabellensatz.'
+      'Tabelle users hat id. Dies ist kein nutzbarer Erkennungssatz.'
     );
     expect(unparsedSpans.length).toBe(1);
+  });
+});
+
+describe('parseDiagramDescription — DE relation patterns (CR-5)', () => {
+  it('"Kunden haben mehrere Bestellungen." auto-creates both tables + 1:N relation', () => {
+    const { diagram, stats } = parseDiagramDescription(
+      'Kunden haben mehrere Bestellungen.'
+    );
+    expect(diagram.tables.kunden).toBeDefined();
+    expect(diagram.tables.bestellungen).toBeDefined();
+    expect(diagram.tables.bestellungen.columns.some((c) => c.name === 'kunden_id')).toBe(true);
+    expect(diagram.relations).toHaveLength(1);
+    expect(diagram.relations[0].type).toBe('many-to-one');
+    expect(stats.tablesAdded).toBe(2);
+    expect(stats.relationsAdded).toBe(1);
+  });
+
+  it('"Bestellungen gehoeren zu einem Kunden." creates N:1 with parent on the right', () => {
+    const { diagram, stats } = parseDiagramDescription(
+      'Bestellungen gehoeren zu einem Kunden.'
+    );
+    expect(diagram.tables.bestellungen.columns.some((c) => c.name === 'kunden_id')).toBe(true);
+    expect(diagram.relations[0].to.table).toBe('kunden');
+    expect(stats.relationsAdded).toBe(1);
+  });
+
+  it('handles the umlaut form "gehören zu einem"', () => {
+    const { diagram } = parseDiagramDescription(
+      'Bestellungen gehören zu einem Kunden.'
+    );
+    expect(diagram.relations[0].from.table).toBe('bestellungen');
+    expect(diagram.relations[0].to.table).toBe('kunden');
+  });
+
+  it('"Order referenziert Customer ueber customer_id." uses the explicit FK column', () => {
+    const { diagram } = parseDiagramDescription(
+      'Order referenziert Customer ueber customer_id.'
+    );
+    const fk = diagram.tables.order.columns.find((c) => c.name === 'customer_id');
+    expect(fk).toBeDefined();
+    expect(diagram.relations[0].from.column).toBe('customer_id');
+  });
+
+  it('"Jede Bestellung enthaelt mehrere Bestellpositionen." captures parent → child', () => {
+    const { diagram } = parseDiagramDescription(
+      'Jede Bestellung enthält mehrere Bestellpositionen.'
+    );
+    expect(diagram.tables.bestellung).toBeDefined();
+    expect(diagram.tables.bestellpositionen).toBeDefined();
+    expect(diagram.relations[0].to.table).toBe('bestellung');
+  });
+
+  it('"Produkte sind einer Kategorie zugeordnet." captures N:1', () => {
+    const { diagram } = parseDiagramDescription(
+      'Produkte sind einer Kategorie zugeordnet.'
+    );
+    expect(diagram.tables.produkte).toBeDefined();
+    expect(diagram.tables.kategorie).toBeDefined();
+    expect(diagram.relations[0].from.table).toBe('produkte');
+    expect(diagram.relations[0].to.table).toBe('kategorie');
+  });
+
+  it('combines a Tabelle-pattern with a relation in one parse call', () => {
+    const { diagram, stats } = parseDiagramDescription(
+      'Tabelle kunden hat id, name. Kunden haben mehrere bestellungen.'
+    );
+    expect(diagram.tables.kunden.columns.find((c) => c.name === 'name')).toBeDefined();
+    expect(diagram.tables.bestellungen).toBeDefined();
+    expect(stats.relationsAdded).toBe(1);
+  });
+
+  it('relation patterns are idempotent — re-parsing same text adds no duplicates', () => {
+    const first = parseDiagramDescription('Kunden haben mehrere Bestellungen.');
+    const second = parseDiagramDescription(
+      'Kunden haben mehrere Bestellungen.',
+      undefined,
+      first.diagram
+    );
+    expect(second.diagram.relations).toHaveLength(1);
+    expect(second.stats.relationsAdded).toBe(0);
+  });
+
+  it('hits the user-test 5-sample corpus baseline (>= 4/5 patterns recognised)', () => {
+    const corpus = [
+      'Kunden haben mehrere Bestellungen.',
+      'Bestellungen gehoeren zu einem Kunden.',
+      'Order referenziert Customer ueber customer_id.',
+      'Jede Bestellung enthält mehrere Bestellpositionen.',
+      'Produkte sind einer Kategorie zugeordnet.',
+    ];
+    let recognised = 0;
+    for (const line of corpus) {
+      const { stats } = parseDiagramDescription(line);
+      if (stats.relationsAdded > 0) recognised += 1;
+    }
+    expect(recognised).toBeGreaterThanOrEqual(4);
   });
 });
