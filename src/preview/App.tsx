@@ -989,11 +989,11 @@ function EditorShell({
     () =>
       buildDefaultActions({
         onAddNode: (type) => {
-          // BPMN-Tools aktivieren das passende Drawing-Tool. ERD und Landscape
-          // Add-Tools werden in Step 1.6 hinzugefuegt.
-          if (type === 'start-event' || type === 'end-event' || type === 'task' || type === 'gateway') {
-            setActiveTool(type);
-          }
+          // v1.1.1 (Step 1.7): Cmd+K aktiviert das passende Drawing-Tool
+          // fuer alle 3 Diagrammtypen. Click-to-Place-Pfad uebernimmt
+          // anschliessend (siehe handleAddNodeAt + paneClick).
+          if (type === 'pointer' || type === 'pan') return;
+          setActiveTool(type);
         },
         onExport: handleExport,
         onToggleCode: toggleCodePanel,

@@ -12,7 +12,17 @@ import {
   Undo2,
   Redo2,
   Files,
+  Table2,
+  User,
+  Box,
+  ExternalLink,
+  Container,
+  Database,
+  Image,
+  FileImage,
+  Archive,
 } from 'lucide-react';
+import type { Tool } from '../../state/useToolStore.js';
 import { useToolStore } from '@/state/useToolStore.js';
 import type { DiagramType } from '../../../types.js';
 
@@ -118,8 +128,8 @@ export function CommandPalette({ diagramType, actions }: CommandPaletteProps) {
 
 // Helper for callers to build default action sets
 export function buildDefaultActions(opts: {
-  onAddNode: (type: 'start-event' | 'end-event' | 'task' | 'gateway') => void;
-  onExport: (format: 'mermaid' | 'sql' | 'dbml' | 'svg' | 'png') => void;
+  onAddNode: (type: Tool) => void;
+  onExport: (format: 'mermaid' | 'sql' | 'dbml' | 'svg' | 'png' | 'bundle') => void;
   onToggleCode: () => void;
   onAutoLayout: () => void;
   onUndo: () => void;
@@ -127,6 +137,7 @@ export function buildDefaultActions(opts: {
   onSwitchDiagram?: () => void;
 }): CommandAction[] {
   return [
+    // ===== BPMN-Add (Shortcut 1-4) =====
     {
       id: 'add-start',
       label: 'Add Start Event',
@@ -163,6 +174,69 @@ export function buildDefaultActions(opts: {
       when: 'bpmn',
       run: () => opts.onAddNode('gateway'),
     },
+    // ===== ERD-Add (v1.1.1 — CR-2): Shortcut 5 =====
+    {
+      id: 'add-table',
+      label: 'Add Table',
+      hint: 'Tabelle hinzufuegen',
+      group: 'ERD',
+      icon: Table2,
+      shortcut: '5',
+      when: 'erd',
+      run: () => opts.onAddNode('table'),
+    },
+    // ===== Landscape-Add (v1.1.1 — CR-3): Shortcut 6-9, 0 =====
+    {
+      id: 'add-lc-person',
+      label: 'Add Person',
+      hint: 'Personen-Aktor',
+      group: 'Landscape',
+      icon: User,
+      shortcut: '6',
+      when: 'landscape',
+      run: () => opts.onAddNode('lc-person'),
+    },
+    {
+      id: 'add-lc-system',
+      label: 'Add System',
+      hint: 'Internes System',
+      group: 'Landscape',
+      icon: Box,
+      shortcut: '7',
+      when: 'landscape',
+      run: () => opts.onAddNode('lc-system'),
+    },
+    {
+      id: 'add-lc-external',
+      label: 'Add External System',
+      hint: 'Externer Dienst (z.B. Stripe)',
+      group: 'Landscape',
+      icon: ExternalLink,
+      shortcut: '8',
+      when: 'landscape',
+      run: () => opts.onAddNode('lc-external'),
+    },
+    {
+      id: 'add-lc-container',
+      label: 'Add Container',
+      hint: 'Container (z.B. Backend)',
+      group: 'Landscape',
+      icon: Container,
+      shortcut: '9',
+      when: 'landscape',
+      run: () => opts.onAddNode('lc-container'),
+    },
+    {
+      id: 'add-lc-database',
+      label: 'Add Database',
+      hint: 'Datenbank',
+      group: 'Landscape',
+      icon: Database,
+      shortcut: '0',
+      when: 'landscape',
+      run: () => opts.onAddNode('lc-database'),
+    },
+    // ===== View =====
     {
       id: 'auto-layout',
       label: 'Run Auto-Layout',
@@ -180,6 +254,7 @@ export function buildDefaultActions(opts: {
       when: 'any',
       run: opts.onToggleCode,
     },
+    // ===== Edit =====
     {
       id: 'undo',
       label: 'Undo',
@@ -198,9 +273,20 @@ export function buildDefaultActions(opts: {
       when: 'any',
       run: opts.onRedo,
     },
+    // ===== Export (v1.1.1 — CR-7: Single Source of Truth, identische Liste wie Header-Dropdown) =====
+    {
+      id: 'export-bundle',
+      label: 'Export Handoff-Bundle',
+      hint: '.zip',
+      group: 'Export',
+      icon: Archive,
+      when: 'any',
+      run: () => opts.onExport('bundle'),
+    },
     {
       id: 'export-mermaid',
       label: 'Export as Mermaid',
+      hint: '.md',
       group: 'Export',
       icon: FileJson,
       when: 'any',
@@ -209,6 +295,7 @@ export function buildDefaultActions(opts: {
     {
       id: 'export-sql',
       label: 'Export as SQL DDL',
+      hint: '.sql',
       group: 'Export',
       icon: Download,
       when: 'erd',
@@ -217,11 +304,31 @@ export function buildDefaultActions(opts: {
     {
       id: 'export-dbml',
       label: 'Export as DBML',
+      hint: '.dbml',
       group: 'Export',
       icon: FileJson,
       when: 'erd',
       run: () => opts.onExport('dbml'),
     },
+    {
+      id: 'export-svg',
+      label: 'Export as SVG',
+      hint: '.svg',
+      group: 'Export',
+      icon: Image,
+      when: 'any',
+      run: () => opts.onExport('svg'),
+    },
+    {
+      id: 'export-png',
+      label: 'Export as PNG',
+      hint: '.png',
+      group: 'Export',
+      icon: FileImage,
+      when: 'any',
+      run: () => opts.onExport('png'),
+    },
+    // ===== Navigation =====
     ...(opts.onSwitchDiagram
       ? [
           {
