@@ -398,7 +398,11 @@ export function registerLandscapeTools(server: McpServer, store: LandscapeStore)
     async ({ text, config, persist }) => {
       const base = await store.load();
       const result = parseLandscapeDescription(text, config, base);
-      if (persist) {
+      // MA-7: persisted=false when the parser added nothing new.
+      const noOp =
+        result.stats.nodesAdded === 0 && result.stats.relationsAdded === 0;
+      const persisted = persist && !noOp;
+      if (persisted) {
         await store.save(result.landscape);
       }
       return textResult(
@@ -409,7 +413,8 @@ export function registerLandscapeTools(server: McpServer, store: LandscapeStore)
             stats: result.stats,
             warnings: result.warnings,
             unparsedSpans: result.unparsedSpans,
-            persisted: persist,
+            persisted,
+            noOp,
             nodeCount: Object.keys(result.landscape.nodes).length,
             relationCount: result.landscape.relations.length,
           },

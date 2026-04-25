@@ -453,7 +453,10 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
     async ({ text, config, persist }) => {
       const base = await store.load();
       const result = parseProcessDescription(text, config, base);
-      if (persist) await store.save(result.process);
+      // MA-7: persisted=false when the parser added nothing new.
+      const noOp = result.stats.nodesAdded === 0 && result.stats.flowsAdded === 0;
+      const persisted = persist && !noOp;
+      if (persisted) await store.save(result.process);
       return textResult(
         JSON.stringify(
           {
@@ -462,7 +465,8 @@ export function registerProcessTools(server: McpServer, store: ProcessStore) {
             stats: result.stats,
             warnings: result.warnings,
             unparsedSpans: result.unparsedSpans,
-            persisted: persist,
+            persisted,
+            noOp,
             nodeCount: Object.keys(result.process.nodes).length,
             flowCount: result.process.flows.length,
           },

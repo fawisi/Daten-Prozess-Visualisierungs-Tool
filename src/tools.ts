@@ -607,7 +607,15 @@ export function registerTools(server: McpServer, initialStore: ErdStore) {
     async ({ text, config, persist }) => {
       const base = await store.load();
       const result = parseDiagramDescription(text, config, base);
-      if (persist) await store.save(result.diagram);
+      // MA-7: when the parser recognised nothing new, skip the disk write
+      // entirely. `noOp: true` lets agents detect "your input did not move
+      // the schema" without a load-and-diff in the next turn.
+      const noOp =
+        result.stats.tablesAdded === 0 &&
+        result.stats.columnsAdded === 0 &&
+        result.stats.relationsAdded === 0;
+      const persisted = persist && !noOp;
+      if (persisted) await store.save(result.diagram);
       return textResult(
         JSON.stringify(
           {
@@ -616,7 +624,8 @@ export function registerTools(server: McpServer, initialStore: ErdStore) {
             stats: result.stats,
             warnings: result.warnings,
             unparsedSpans: result.unparsedSpans,
-            persisted: persist,
+            persisted,
+            noOp,
             tableCount: Object.keys(result.diagram.tables).length,
           },
           null,
