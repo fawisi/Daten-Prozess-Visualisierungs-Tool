@@ -6,10 +6,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   SafeIdentifier,
   ColumnType,
-  RelationType,
   DiagramSchema,
   NodeStatus,
 } from './schema.js';
+import { CardinalityInput, toLong } from './cardinality.js';
 import { toMermaid } from './export/mermaid.js';
 import { DbmlStore, diagramToDbml, rawDatabaseToDiagram } from './dbml-store.js';
 import { Parser, exporter } from '@dbml/core';
@@ -239,16 +239,19 @@ export function registerTools(server: McpServer, initialStore: ErdStore) {
     'diagram_add_relation',
     {
       description:
-        'Add a foreign key relation between two tables. For > 3 mutations in a single turn prefer `set_dbml`.',
+        'Add a foreign key relation between two tables. Cardinality accepts both long form (one-to-many) and short form (1:N). For > 3 mutations in a single turn prefer `set_dbml`.',
       inputSchema: z.object({
         fromTable: SafeIdentifier.describe('Source table'),
         fromColumn: SafeIdentifier.describe('Source column (FK)'),
         toTable: SafeIdentifier.describe('Target table'),
         toColumn: SafeIdentifier.describe('Target column (usually PK)'),
-        type: RelationType.describe('Relation cardinality'),
+        type: CardinalityInput.describe(
+          'Relation cardinality. Accepts long form (one-to-one|one-to-many|many-to-one|many-to-many) OR short form (1:1|1:N|N:1|N:N) — MA-3.'
+        ),
       }),
     },
     async ({ fromTable, fromColumn, toTable, toColumn, type }) => {
+      const cardinality = toLong(type);
       const diagram = await store.load();
 
       // Validate tables exist
@@ -294,11 +297,11 @@ export function registerTools(server: McpServer, initialStore: ErdStore) {
       diagram.relations.push({
         from: { table: fromTable, column: fromColumn },
         to: { table: toTable, column: toColumn },
-        type,
+        type: cardinality,
       });
       await store.save(diagram);
       return textResult(
-        `Added ${type} relation from "${fromTable}.${fromColumn}" to "${toTable}.${toColumn}". ${schemaSummary(diagram)}`
+        `Added ${cardinality} relation from "${fromTable}.${fromColumn}" to "${toTable}.${toColumn}". ${schemaSummary(diagram)}`
       );
     }
   );
