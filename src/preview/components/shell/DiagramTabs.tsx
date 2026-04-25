@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table2, GitBranch, X } from 'lucide-react';
+import { Table2, GitBranch, Network, X } from 'lucide-react';
 import type { DiagramFile } from './AppSidebar.js';
 
 interface OpenTab {
@@ -29,8 +29,10 @@ export function DiagramTabs({ tabs, activeTab, onTabSelect, onTabClose }: Diagra
             >
               {tab.file.type === 'erd' ? (
                 <Table2 className="mr-1.5 h-3 w-3" />
-              ) : (
+              ) : tab.file.type === 'bpmn' ? (
                 <GitBranch className="mr-1.5 h-3 w-3" />
+              ) : (
+                <Network className="mr-1.5 h-3 w-3" />
               )}
               {tab.file.name}
               <span

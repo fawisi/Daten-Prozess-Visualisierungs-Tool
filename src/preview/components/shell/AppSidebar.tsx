@@ -12,12 +12,13 @@ import {
   SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Table2, GitBranch, FileJson } from 'lucide-react';
+import { Table2, GitBranch, FileJson, Network } from 'lucide-react';
+import type { DiagramType } from '../../../types.js';
 
 export interface DiagramFile {
   name: string;
   path: string;
-  type: 'erd' | 'bpmn' | 'landscape';
+  type: DiagramType;
 }
 
 interface AppSidebarProps {
@@ -30,6 +31,7 @@ interface AppSidebarProps {
 export function AppSidebar({ files, activeFile, onFileSelect, selectedElement }: AppSidebarProps) {
   const erdFiles = files.filter((f) => f.type === 'erd');
   const bpmnFiles = files.filter((f) => f.type === 'bpmn');
+  const landscapeFiles = files.filter((f) => f.type === 'landscape');
 
   return (
     <Sidebar>
@@ -87,6 +89,31 @@ export function AppSidebar({ files, activeFile, onFileSelect, selectedElement }:
                         className="font-mono text-xs"
                       >
                         <GitBranch className="h-4 w-4" />
+                        <span>{file.name}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+
+          {/* System Landscape (v1.1.1 — CR-3) */}
+          {landscapeFiles.length > 0 && (
+            <SidebarGroup>
+              <SidebarGroupLabel className="font-mono text-[10px] uppercase tracking-wider">
+                System Landscape
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {landscapeFiles.map((file) => (
+                    <SidebarMenuItem key={file.path}>
+                      <SidebarMenuButton
+                        isActive={file.path === activeFile}
+                        onClick={() => onFileSelect(file)}
+                        className="font-mono text-xs"
+                      >
+                        <Network className="h-4 w-4" />
                         <span>{file.name}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
