@@ -81,6 +81,8 @@ export interface Dict {
     canvas_title: string;
     canvas_hint: string;
     bpmn_placeholder: string;
+    erd_placeholder: string;
+    landscape_placeholder: string;
   };
   footer: {
     tagline: string;
@@ -168,8 +170,13 @@ export const de: Dict = {
     canvas_title: 'Kein Diagramm geladen',
     canvas_hint:
       'Klicke ein Werkzeug in der Seitenleiste oder druecke Cmd+K fuer die Command-Palette.',
+    // MI-1: replaced MCP-tool-name with click-first wording for non-agent users.
     bpmn_placeholder:
-      'Noch keine Prozess-Knoten. Nutze process_add_node, um Knoten anzulegen.',
+      'Noch keine Prozess-Knoten. Klicke das Task-Werkzeug (Shortcut 3) und dann auf den Canvas, um deinen ersten Knoten zu setzen.',
+    erd_placeholder:
+      'Noch keine Tabellen. Klicke das Tabellen-Werkzeug (Shortcut 5) und dann auf den Canvas, um deine erste Tabelle anzulegen.',
+    landscape_placeholder:
+      'Noch keine Landscape-Knoten. Klicke ein Landscape-Werkzeug (Shortcut 6 bis 0) und dann auf den Canvas.',
   },
   footer: {
     tagline:

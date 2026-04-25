@@ -25,14 +25,9 @@ interface TopHeaderProps {
   hiddenElementsCount?: number;
 }
 
-const EXPORT_OPTION_IDS: { id: ExportFormat; hint: string }[] = [
-  { id: 'bundle', hint: '.zip' },
-  { id: 'mermaid', hint: '.md' },
-  { id: 'sql', hint: '.sql' },
-  { id: 'dbml', hint: '.dbml' },
-  { id: 'svg', hint: '.svg' },
-  { id: 'png', hint: '.png' },
-];
+// EXPORT_OPTION_IDS is now sourced from ./export-options.ts so the
+// command palette and the header dropdown can never drift apart (CR-7).
+import { EXPORT_OPTIONS } from './export-options.js';
 
 export function TopHeader({
   fileName,
@@ -152,7 +147,7 @@ export function TopHeader({
           </Button>
           {exportOpen && (
             <div className="absolute right-0 top-9 z-40 min-w-[160px] rounded-md border bg-popover shadow-md overflow-hidden">
-              {EXPORT_OPTION_IDS.map((opt) => (
+              {EXPORT_OPTIONS.map((opt) => (
                 <button
                   key={opt.id}
                   type="button"
