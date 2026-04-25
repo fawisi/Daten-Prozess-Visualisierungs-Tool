@@ -4,6 +4,115 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] — 2026-04-25
+
+Stabilization release after a synthetic user-test (5 personas, 30 stories,
+24 findings). Closes 7 critical findings (CR-1 to CR-7) and 5 of the
+13 major findings without breaking existing API contracts. Backwards-compatible.
+
+### Added
+
+- **AppSidebar Landscape-Sektion** with Network-Icon, plus DiagramTabs +
+  CommandPalette + ToolPalette type-erweiterung — Landscape ist jetzt UI-
+  voll bedienbar (CR-3).
+- **5 Landscape Click-to-Place Tools** in der ToolPalette — Person `6`,
+  System `7`, External `8`, Container `9`, Database `0` — plus Cmd+K-
+  Add-Aktionen analog (CR-3).
+- **ERD Click-to-Place** (Tabellen-Werkzeug `5`) in ToolPalette + Cmd+K-
+  Palette + paneClick-Handler (CR-2).
+- **Server-Validation an allen 3 PUT-Source-Routen** via neuer
+  `writeValidatedRawBody`-Helper (`src/preview/vite-validation.ts`).
+  Zod-validiert Body, atomic-rename-write, RFC-7807 application/problem+json
+  bei Failure. Loest CR-4 — Live-Test zerstoerte vorher test-schema.erd.json.
+- **`set_dbml` Auto-Migration** wenn JSON-Store erkannt: importiert
+  migrate-cli, ruft migrateFile auf, swapt Store-Reference im laufenden
+  Server. Output enthaelt `migrated: true / oldPath / newPath` (CR-6).
+- **`viso-mcp init --format=dbml|json`** + **`--with-samples`**: kopiert
+  Demo-Fixtures (4-Tabellen-DBML, 8-Node-BPMN, 5-Node-Landscape) in
+  den cwd. DBML ist Default. (CR-6 / MI-3)
+- **5 deutsche Relations-Patterns fuer ERD-Narrative-Parser:**
+  "Kunden haben mehrere Bestellungen.", "Bestellungen gehoeren zu einem
+  Kunden.", "Order referenziert Customer ueber customer_id.", "Jede
+  Bestellung enthält mehrere Bestellpositionen.", "Produkte sind einer
+  Kategorie zugeordnet." Auto-create Tabellen mit `id uuid primary` (CR-5).
+- **6 deutsche Patterns fuer BPMN-Narrative-Parser:**
+  "{A} uebergibt {payload} an {B}.", "{A} ruft {service} fuer {B}.",
+  "{A} sendet {msg} via {channel}.", "Nach {A} folgt {B}.",
+  "{A} prueft {target}.", "{A} verarbeitet {target}." Akzeptieren
+  Umlaut + Transliteration (CR-5).
+- **LLM-Adapter** (`src/narrative/llm-adapter.ts`): nativer fetch-call
+  gegen Anthropic Messages API ohne neue Dependency. Aktivierung via
+  `VISO_LLM_PARSE=true` + `ANTHROPIC_API_KEY`. Default-Model
+  `claude-haiku-4-5`. Returnt `null` bei Failure → Regex-Fallback
+  bleibt der einzige garantierte Code-Pfad fuer Caller.
+- **`parseDiagramDescriptionAsync()`** als async-variante mit LLM-First +
+  Regex-Fallback. Sync-API unveraendert.
+- **`src/cardinality.ts`**: zentrales Long-Form ↔ Short-Form Mapping
+  (1:N ↔ many-to-one) plus Mermaid-Notation. `diagram_add_relation`
+  akzeptiert ab v1.1.1 beide Formen (MA-3).
+- **`EXPORT_OPTIONS`** als Single Source of Truth in
+  `src/preview/components/shell/export-options.ts`. Header-Dropdown und
+  Cmd+K-Palette lesen beide aus dem gleichen Array — kein Drift mehr (CR-7).
+- **Dynamic Header-Badge:** ERD / BPMN / LANDSCAPE / HUB / HYBRID statt
+  static "HYBRID" (MA-12).
+- **Initial alle Tabs offen + DiagramTabs immer sichtbar** wenn ≥ 1 File
+  geladen. "Switch Diagram..." in Cmd+K rotiert echte Tabs. (CR-1)
+
+### Changed
+
+- **`set_bpmn` Param `json` → `process`** (canonical), `json` weiterhin
+  als deprecated alias akzeptiert (MA-4).
+- **`set_landscape` Param `json` → `landscape`** (canonical), `json`
+  weiterhin als deprecated alias (MA-4).
+- **`parse_description` reportet jetzt `engineUsed: 'regex' | 'llm' | 'hybrid'`**
+  und `noOp: boolean` zusaetzlich zu `persisted`. Bei `noOp: true` wird
+  nicht persistiert auch wenn `persist: true` (MA-7).
+- **EmptyState-Texte ohne MCP-Tool-Namen.** Statt "Use process_add_node"
+  steht jetzt "Klicke das Task-Werkzeug (Shortcut 3) und dann auf den
+  Canvas, um deinen ersten Knoten zu setzen." Pro Use Case eigener Text
+  (MI-1).
+- **Type-Hub:** `src/types.ts` re-exportiert `DiagramTypeEnum` aus
+  `bundle/manifest.ts`. Alle UI-Komponenten importieren von dort —
+  TypeScript zwingt Vollstaendigkeit ueber `'erd' | 'bpmn' | 'landscape'`.
+
+### Fixed
+
+- **CR-1 — File-Switch UI:** AppSidebar mounted, alle Tabs initial
+  offen, DiagramTabs immer sichtbar, "Switch Diagram..." rotiert
+  korrekt durch openTabs.
+- **CR-4 — Server akzeptiert kaputten Input:** `PUT /__viso-api/source`
+  liefert jetzt 400 + RFC-7807 bei JSON-Parse-Error oder Schema-
+  Verletzung. Atomic-Write garantiert: Original-File ist nie in einem
+  Half-Written-Zustand zu beobachten.
+- **CR-7 — Cmd+K vs Header-Dropdown Drift:** beide nutzen jetzt
+  `EXPORT_OPTIONS` als Datentopf.
+- **MA-1 — `attachmentSlot`-Stub leakte im Vite-Mode:** "Screen-
+  Recording starten"-Demo-Button entfernt; Slot rendert nur noch
+  wenn Hub einen `attachmentSlot` injiziert.
+- **MA-7 — `persisted: false` bei `noOp: true`:** alle 3
+  `*_parse_description`-Tools schreiben nicht auf Disk wenn der
+  Parser keine neuen Knoten/Spalten/Relations erzeugt hat.
+
+### Tests
+
+- 255 Tests in 26 Test-Files gruen (vorher 207 in 23).
+- 4 neue Tests in `vite-validation.test.ts` (CR-4)
+- 5 neue Tests in `init-cli.test.ts` (CR-6)
+- 9 neue Tests in `parse-description.test.ts` (ERD DE-Patterns)
+- 9 neue Tests in `bpmn/parse-description.test.ts` (BPMN DE-Patterns)
+- 9 neue Tests in `narrative/llm-adapter.test.ts` (Mock-fetch)
+- 12 neue Tests in `cardinality.test.ts`
+
+### Migration
+
+Backwards-compatible. JSON-Mode `*.erd.json` Dateien funktionieren
+weiterhin; `set_dbml` migriert automatisch beim ersten Aufruf.
+`set_bpmn(json: ...)` und `set_landscape(json: ...)` funktionieren
+unveraendert ueber den Deprecated-Alias.
+
+Bekannte Limitierung: Phase 5 hat MA-2/5/6/8/9/10/11 + MI-2/4 noch
+offen; geplant fuer einen Folge-Sprint.
+
 ## [1.1.0] — 2026-04-22
 
 Consulting-ready release. Turns `viso-mcp` from a diagram editor into a
