@@ -113,6 +113,30 @@ function selectErdStore(path: string): ErdStore {
 }
 
 /**
+ * XOR-validates the {inPath, inBytes} pair on `import_bundle`. Exactly
+ * one of the two is required; the agent or hub picks the channel that
+ * fits its workflow (CLI uses `inPath`, an in-process Hub adapter uses
+ * `inBytes`). Extracted for unit-test coverage (MA-6 — v1.1.2).
+ */
+export function validateImportSource(
+  inPath: string | undefined,
+  inBytes: string | undefined
+):
+  | { ok: true; mode: 'path' | 'bytes' }
+  | { ok: false; error: string } {
+  if (!inPath && !inBytes) {
+    return { ok: false, error: 'Provide one of inPath or inBytes' };
+  }
+  if (inPath && inBytes) {
+    return {
+      ok: false,
+      error: 'Provide only one of inPath or inBytes, not both',
+    };
+  }
+  return { ok: true, mode: inPath ? 'path' : 'bytes' };
+}
+
+/**
  * Register `export_bundle` + `import_bundle` tools.
  *
  * `export_bundle` is always server-side (CLI / agent) — writes a Zip to
@@ -129,10 +153,15 @@ export function registerBundleTools(server: McpServer, stores: BundleStores) {
     'export_bundle',
     {
       description:
-        "Export a Handoff-Bundle Zip (.viso.json manifest + source + positions + Mermaid) for a diagram. Writes to `outPath` on disk. Browser consumers call `buildBundleBlob` directly for in-memory Blob + download.",
+        "Export a Handoff-Bundle Zip (.viso.json manifest + source + positions + Mermaid) for a diagram. With `outPath` writes the Zip to disk; without `outPath` returns the Zip bytes base64-encoded so an in-process caller (Hub, sandboxed agent) can ship the bundle without touching the filesystem (MA-6).",
       inputSchema: z.object({
         diagramType: z.enum(['erd', 'bpmn', 'landscape']),
-        outPath: z.string().describe('Absolute file path to write the Zip to'),
+        outPath: z
+          .string()
+          .optional()
+          .describe(
+            'Absolute file path to write the Zip to. Omit for an in-memory base64 return.'
+          ),
         includeExports: z
           .array(z.enum(['mermaid', 'svg', 'png']))
           .optional()
@@ -155,6 +184,24 @@ export function registerBundleTools(server: McpServer, stores: BundleStores) {
       const mermaid = wanted.has('mermaid') ? await renderMermaidFor(diagramType, stores) : undefined;
       const blob = await buildBundleBlob({ manifest, source, mermaid });
       const buf = Buffer.from(await blob.arrayBuffer());
+
+      // MA-6: in-memory path. No `outPath` means the caller wants the
+      // bytes returned directly (base64) so they can keep the bundle in
+      // memory, ship it over a non-FS channel, or write it themselves.
+      if (!outPath) {
+        return textResult(
+          JSON.stringify(
+            {
+              ok: true,
+              bytes: buf.toString('base64'),
+              byteLength: buf.byteLength,
+              manifest,
+            },
+            null,
+            2
+          )
+        );
+      }
 
       const resolved = resolve(outPath);
       // Defence in depth: keep the write anchored to its own directory
@@ -181,15 +228,37 @@ export function registerBundleTools(server: McpServer, stores: BundleStores) {
     'import_bundle',
     {
       description:
-        "Import a Handoff-Bundle Zip from disk. Validates the manifest + enforces the entry whitelist + size caps, then routes the source into the matching store. `onConflict` controls what happens when the current file is non-empty ('rename' = write to <name>-v2, 'overwrite' = replace, 'abort' = reject).",
+        "Import a Handoff-Bundle Zip. Provide either `inPath` (read from disk) or `inBytes` (base64-encoded Zip; MA-6 — for in-process Hub callers). Validates the manifest, enforces the entry whitelist + size caps, then routes the source into the matching store. `onConflict` controls what happens when the current file is non-empty ('rename' = write to <name>-v2, 'overwrite' = replace, 'abort' = reject).",
       inputSchema: z.object({
-        inPath: z.string().describe('Absolute path to the .zip file'),
+        inPath: z
+          .string()
+          .optional()
+          .describe(
+            'Absolute path to the .zip file. Mutually exclusive with `inBytes`.'
+          ),
+        inBytes: z
+          .string()
+          .optional()
+          .describe(
+            'Base64-encoded bundle bytes. Mutually exclusive with `inPath`.'
+          ),
         onConflict: z.enum(['rename', 'overwrite', 'abort']).default('rename'),
       }),
       annotations: { destructiveHint: true },
     },
-    async ({ inPath, onConflict }) => {
-      const buf = await readFile(resolve(inPath));
+    async ({ inPath, inBytes, onConflict }) => {
+      const sourceCheck = validateImportSource(inPath, inBytes);
+      if (!sourceCheck.ok) {
+        return problemResult({
+          type: 'https://viso-mcp.dev/problems/bundle-import-invalid-input',
+          title: 'Bundle import input invalid',
+          detail: sourceCheck.error,
+        });
+      }
+      const buf =
+        sourceCheck.mode === 'path'
+          ? await readFile(resolve(inPath!))
+          : Buffer.from(inBytes!, 'base64');
       const parsed = await parseBundleBlob(new Uint8Array(buf)).catch((err) => err as Error);
       if (parsed instanceof Error) {
         return problemResult({

@@ -3,8 +3,8 @@ import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { registerBundleTools } from './tools.js';
-import { buildBundleBlob } from './serialize.js';
+import { registerBundleTools, validateImportSource } from './tools.js';
+import { buildBundleBlob, parseBundleBlob } from './serialize.js';
 import type { BundleManifest } from './manifest.js';
 import { ProcessStore } from '../bpmn/store.js';
 import { LandscapeStore } from '../landscape/store.js';
@@ -136,5 +136,61 @@ describe('bundle tools — round-trip', () => {
     const { parseBundleBlob } = await import('./serialize.js');
     const parsed = await parseBundleBlob(new Uint8Array(await blob.arrayBuffer()));
     expect(parsed.source).toBe(source);
+  });
+
+  it('MA-6: bundle bytes round-trip through base64 (in-memory channel)', async () => {
+    const source = await readFile(fixture.bpmnPath, 'utf-8');
+    const manifest: BundleManifest = {
+      version: '1.1',
+      diagramType: 'bpmn',
+      name: 'in-memory',
+      tool: { name: 'viso-mcp', version: 'test' },
+    };
+    const blob = await buildBundleBlob({ manifest, source });
+    const buf = Buffer.from(await blob.arrayBuffer());
+
+    // Encode to base64 (the wire format export_bundle returns when no
+    // outPath is given), decode, parse — must equal the original.
+    const base64 = buf.toString('base64');
+    expect(base64.length).toBeGreaterThan(0);
+    const decoded = Buffer.from(base64, 'base64');
+    const parsed = await parseBundleBlob(new Uint8Array(decoded));
+    expect(parsed.source).toBe(source);
+    expect(parsed.manifest.diagramType).toBe('bpmn');
+  });
+});
+
+describe('validateImportSource', () => {
+  it('rejects when neither inPath nor inBytes is given', () => {
+    const result = validateImportSource(undefined, undefined);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('one of inPath or inBytes');
+    }
+  });
+
+  it('rejects when both inPath and inBytes are given', () => {
+    const result = validateImportSource('/tmp/x.zip', 'YQ==');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('not both');
+    }
+  });
+
+  it('accepts inPath only', () => {
+    const result = validateImportSource('/tmp/x.zip', undefined);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.mode).toBe('path');
+  });
+
+  it('accepts inBytes only', () => {
+    const result = validateImportSource(undefined, 'YQ==');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.mode).toBe('bytes');
+  });
+
+  it('treats empty strings as "not provided" (XOR-friendly)', () => {
+    const both = validateImportSource('', '');
+    expect(both.ok).toBe(false);
   });
 });
