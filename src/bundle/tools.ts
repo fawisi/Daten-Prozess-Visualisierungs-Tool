@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { buildBundleBlob, parseBundleBlob } from './serialize.js';
+import { renderMermaidToPng } from './render-png.js';
 import { BundleManifestSchema, BUNDLE_SCHEMA_VERSION } from './manifest.js';
 import type { BundleManifest } from './manifest.js';
 import { ProcessStore } from '../bpmn/store.js';
@@ -170,7 +171,10 @@ export function registerBundleTools(server: McpServer, stores: BundleStores) {
       annotations: { idempotentHint: true },
     },
     async ({ diagramType, outPath, includeExports }) => {
-      const wanted = new Set(includeExports ?? ['mermaid']);
+      // MA-8: PNG joins the default export set. Caller can override
+      // (e.g. `['mermaid']` if they don't want the optional puppeteer
+      // dependency triggered, even when it's installed).
+      const wanted = new Set(includeExports ?? ['mermaid', 'png']);
       const source = await readSource(diagramType, stores);
       const mode = await readModeForManifest(diagramType, stores);
       const manifest: BundleManifest = {
@@ -181,8 +185,22 @@ export function registerBundleTools(server: McpServer, stores: BundleStores) {
         createdAt: new Date().toISOString(),
         tool: { name: 'viso-mcp', version: TOOL_VERSION },
       };
-      const mermaid = wanted.has('mermaid') ? await renderMermaidFor(diagramType, stores) : undefined;
-      const blob = await buildBundleBlob({ manifest, source, mermaid });
+      // Mermaid is the source-of-truth for PNG rendering: we feed it to
+      // a headless Chrome via `renderMermaidToPng` when puppeteer is on
+      // the path. If the caller dropped 'mermaid' but kept 'png' there's
+      // nothing to render — skip silently rather than emit an empty PNG.
+      const needMermaid = wanted.has('mermaid') || wanted.has('png');
+      const mermaid = needMermaid ? await renderMermaidFor(diagramType, stores) : undefined;
+      const png =
+        wanted.has('png') && mermaid
+          ? await renderMermaidToPng({ mermaid })
+          : undefined;
+      const blob = await buildBundleBlob({
+        manifest,
+        source,
+        mermaid: wanted.has('mermaid') ? mermaid : undefined,
+        ...(png ? { png } : {}),
+      });
       const buf = Buffer.from(await blob.arrayBuffer());
 
       // MA-6: in-memory path. No `outPath` means the caller wants the
