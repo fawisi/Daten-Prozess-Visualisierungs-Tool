@@ -4,6 +4,99 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] — 2026-04-26
+
+Open-Items-Sweep des Stabilization-Sprints. Schliesst die in v1.1.1
+offen gehaltenen Major-Findings (MA-2, MA-5, MA-6, MA-8, MA-9, MA-10,
+MA-11) und zwei Minor-Findings (MI-2, MI-4). Backwards-compatible
+Patch-Release. Synthetic Re-Test (5 Personas, Concept-Eval) hebt SUS
+von 23/100 (v1.1.0-Baseline) auf 70.5/100 — 22 von 24 Baseline-Findings
+nachweislich geschlossen.
+
+### Added
+
+- **`/__viso-api/erd/*` als kanonische ERD-Endpoint-Form** parallel zu
+  `/bpmn/*` und `/landscape/*`. Vite-Plugin aliased die neuen URLs auf
+  die Bestands-Handler, sodass alte Clients (Hub, MCP-Tools, curl)
+  unveraendert weiter funktionieren. `ApiConfig` Default-Endpoints
+  emittieren ab v1.1.2 die kanonische Form (MA-5).
+- **Inline Spalten-Editor im PropertiesPanel** fuer ERD-Tabellen: pro
+  Zeile Name + Typ + PK-Checkbox + X-Button, "+ Spalte hinzufuegen"-
+  Button. Schema-Constraint `min(1)` wird UI-seitig durch disabled-
+  Remove auf der letzten Spalte vorgehalten. `description` und `status`
+  auf Bestandsspalten ueberleben den Round-Trip (MA-11).
+- **Persistente initial-Layout-Sicherung in allen 3 Sync-Hooks**
+  (`useDiagramSync`, `useProcessSync`, `useLandscapeSync`): wenn
+  `*.pos.json` leer ist und Knoten existieren, schreibt der Hook die
+  ELK-Anordnung beim ersten Load einmal auf Disk. Verhindert das
+  Reshuffeln nach einem einzelnen Drag (MA-9).
+- **Landscape-Mode-Toggle (L1 / L2)** im TopHeader analog zu Simple/
+  BPMN. Discriminator `modeKind: 'process' | 'landscape'`. Optimistic
+  PUT auf `/landscape/mode` mit Revert bei Failure (MA-10).
+- **`export_bundle.outPath` ist optional**: ohne `outPath` kommt das
+  Zip base64-encoded zurueck (`{ ok, bytes, byteLength, manifest }`).
+  `import_bundle` akzeptiert symmetrisch entweder `inPath` ODER
+  `inBytes` (XOR via neuem `validateImportSource`-Helper). Damit kann
+  der Hub Bundle-Round-Trips komplett im Memory machen (MA-6).
+- **Default-PNG im Handoff-Bundle** via optionalem `puppeteer`-Render-
+  Pfad (`includeExports` defaultet auf `['mermaid', 'png']`). Falls
+  `puppeteer` nicht installiert ist, gibt es eine Warn-Zeile mit
+  Install-Hinweis und PNG wird sauber uebersprungen — der Bundle
+  enthaelt weiter Source + Mermaid + Positions (MA-8).
+- **`en` Locale-Dict mit identischem Key-Shape wie `de`** in
+  `src/preview/i18n/dict.ts`. Hub-Caller koennen `locale="en"`
+  durchreichen. `Locale`-Type ist auf `'de' | 'en'` geweitet;
+  TypeScript erzwingt durch das Dict-Interface Vollstaendigkeit beider
+  Locales beim Build (MI-2).
+
+### Changed
+
+- **`handleUpdateNode` persistiert ERD- und Landscape-Edits** ueber
+  `applyErdTableUpdate` / `applyLandscapeNodeUpdate`. Vorher
+  verschwanden alle PropertiesPanel-Edits ausser fuer BPMN. ERD-Label-
+  Edits (Tabellen-Rename) sind weiter no-op — Rename muesste die
+  Relations mitziehen und kommt in einem Folge-PR (MA-2).
+- **Field-Labels im PropertiesPanel:** `properties.label`
+  "Bezeichnung" / "Label" → "Name" / "Name", `properties.title_node`
+  "Knoten" / "Node" → "Typ" / "Type". User-Test 2026-04-25 hat beide
+  Begriffe als unklar gemeldet (MI-4).
+- **`puppeteer` als optional peerDependency** in `package.json`
+  (`peerDependenciesMeta.puppeteer.optional = true`). Standard-User
+  bleiben install-frei.
+
+### Fixed
+
+- **EmptyState-Texte in allen 3 Canvas-Komponenten** (`ErdCanvas`,
+  `BpmnCanvas`, `LandscapeCanvas`) ziehen aus `t.empty.*_placeholder`
+  statt hardcoded Strings — Voraussetzung fuer die EN-Locale (Teil von
+  MI-2).
+
+### Tests
+
+- 304 Tests in 32 Test-Files gruen (vorher 255 in 26). +49 Tests:
+  - 6 in `src/preview/url-aliases.test.ts` (MA-5)
+  - 13 in `src/preview/node-update.test.ts` (MA-2 + MA-11)
+  - 5 in `src/preview/hooks/auto-layout.test.ts` (MA-9)
+  - 8 in `src/preview/components/shell/mode-toggle-helpers.test.ts` (MA-10)
+  - 6 in `src/bundle/tools.test.ts` (MA-6 + base64 Round-Trip)
+  - 5 in `src/bundle/render-png.test.ts` (MA-8 mit gemockten
+    puppeteer-Importer)
+  - 6 in `src/preview/i18n/dict.test.ts` (MI-2 + MI-4)
+
+### Migration
+
+Backwards-compatible. Alle Bestands-API-Kontrakte bleiben gueltig:
+`/__viso-api/source` etc. funktionieren weiter, nur `/erd/source` ist
+neu als kanonische Form dazu gekommen. `export_bundle.outPath` und
+`import_bundle.inPath` sind weiter unterstuetzt; die in-memory-bytes-
+Variante ist additiv. PropertiesPanel-Edits, die bisher (still) fuer
+ERD/Landscape verloren gingen, persistieren jetzt — keine Datenverlust-
+Migration noetig.
+
+Verbleibender Backlog (v1.1.3): ERD-Tabellen-Rename in PropertiesPanel
+(neu sichtbar nach MA-2), Performance-Pass fuer Auto-Layout bei 50+
+Tabellen, Real-User-Test mit 3-5 echten Beratern (Q3).
+
 ## [1.1.1] — 2026-04-25
 
 Stabilization release after a synthetic user-test (5 personas, 30 stories,

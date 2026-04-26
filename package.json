@@ -1,6 +1,6 @@
 {
   "name": "viso-mcp",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Agent-native MCP server for ER (DBML), BPMN process, and C4 System-Landscape visualization. Consulting-ready narrative-to-diagram, Handoff-Bundle export, DE-first UI.",
   "type": "module",
   "sideEffects": [
