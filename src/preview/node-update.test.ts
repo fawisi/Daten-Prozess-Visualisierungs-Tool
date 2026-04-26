@@ -64,12 +64,77 @@ describe('applyErdTableUpdate', () => {
     expect(doc.tables.users!.status).toBeUndefined();
   });
 
-  it('ignores label updates (table rename is unsupported here)', () => {
+  it('renames the table when label is a valid new identifier (B1)', () => {
     const doc = fixtureDiagram();
     applyErdTableUpdate(doc, 'users', { label: 'people' });
-    // Table key is unchanged
+    expect(doc.tables.users).toBeUndefined();
+    expect(doc.tables.people).toBeDefined();
+    // Description and columns survive the rename intact.
+    expect(doc.tables.people!.description).toBe('Existing description');
+    expect(doc.tables.people!.status).toBe('open');
+    expect(doc.tables.people!.columns[0]!.name).toBe('id');
+  });
+
+  it('no-ops on rename when label equals the current id (B1)', () => {
+    const doc = fixtureDiagram();
+    const before = JSON.stringify(doc);
+    applyErdTableUpdate(doc, 'users', { label: 'users' });
+    expect(JSON.stringify(doc)).toBe(before);
+  });
+
+  it('no-ops on rename when target key already exists (B1)', () => {
+    const doc = fixtureDiagram();
+    applyErdTableUpdate(doc, 'users', { label: 'orders' });
+    // Both tables remain, neither was overwritten.
     expect(doc.tables.users).toBeDefined();
-    expect(doc.tables.people).toBeUndefined();
+    expect(doc.tables.users!.description).toBe('Existing description');
+    expect(doc.tables.orders).toBeDefined();
+    expect(doc.tables.orders!.description).toBeUndefined();
+  });
+
+  it('no-ops on rename when label is not a SafeIdentifier (B1)', () => {
+    const doc = fixtureDiagram();
+    applyErdTableUpdate(doc, 'users', { label: '1bad-name' });
+    expect(doc.tables.users).toBeDefined();
+    expect(doc.tables['1bad-name']).toBeUndefined();
+  });
+
+  it('no-ops on rename when label is empty (B1)', () => {
+    const doc = fixtureDiagram();
+    applyErdTableUpdate(doc, 'users', { label: '' });
+    expect(doc.tables.users).toBeDefined();
+    expect(doc.tables['']).toBeUndefined();
+  });
+
+  it('rewrites every relation pointing at the old key on rename (B1)', () => {
+    const doc = fixtureDiagram();
+    doc.relations = [
+      {
+        from: { table: 'users', column: 'id' },
+        to: { table: 'orders', column: 'user_id' },
+        type: 'one-to-many',
+      },
+      {
+        from: { table: 'orders', column: 'user_id' },
+        to: { table: 'users', column: 'id' },
+        type: 'many-to-one',
+      },
+    ];
+    applyErdTableUpdate(doc, 'users', { label: 'people' });
+    expect(doc.relations[0]!.from.table).toBe('people');
+    expect(doc.relations[0]!.to.table).toBe('orders');
+    expect(doc.relations[1]!.from.table).toBe('orders');
+    expect(doc.relations[1]!.to.table).toBe('people');
+  });
+
+  it('applies description and rename in the same NodeUpdate batch (B1)', () => {
+    const doc = fixtureDiagram();
+    applyErdTableUpdate(doc, 'users', {
+      label: 'people',
+      description: 'Renamed + redescribed',
+    });
+    expect(doc.tables.users).toBeUndefined();
+    expect(doc.tables.people!.description).toBe('Renamed + redescribed');
   });
 
   it('no-ops for unknown table ids', () => {

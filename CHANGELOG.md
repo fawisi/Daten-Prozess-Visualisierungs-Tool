@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **ERD-Tabellen-Rename im PropertiesPanel** (B1, Folge-Item aus
+  v1.1.2 MA-2). Bei einer Aenderung des "Name"-Felds einer ERD-Tabelle
+  benennt `applyErdTableUpdate` jetzt den Tabellen-Schluessel um und
+  zieht jede Relation (`from.table`, `to.table`), die auf den alten
+  Schluessel zeigte, mit. Validierung gegen `SafeIdentifier` aus dem
+  Schema (`/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`). Trivial-Fall
+  (`label === id`), Kollision (Ziel existiert schon) und ungueltige
+  Identifier sind stille no-ops — der Panel zeigt dann weiter den
+  alten Namen, statt den Edit lautlos zu schlucken oder den Doc zu
+  korrumpieren.
+
+### Tests
+
+- 310 Tests in 32 Test-Files gruen (vorher 304). +6 Tests in
+  `src/preview/node-update.test.ts` decken Rename-Happy-Path,
+  trivial/collision/invalid/empty no-ops, Relations-Rewrite und einen
+  kombinierten label+description-Batch ab.
+
 ## [1.1.2] — 2026-04-26
 
 Open-Items-Sweep des Stabilization-Sprints. Schliesst die in v1.1.1

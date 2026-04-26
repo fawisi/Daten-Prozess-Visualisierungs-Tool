@@ -1,4 +1,4 @@
-import type { Diagram } from '../schema.js';
+import { SafeIdentifier, type Diagram } from '../schema.js';
 import type { Landscape } from '../landscape/schema.js';
 import type { NodeUpdate } from './components/shell/PropertiesPanel.js';
 
@@ -6,9 +6,13 @@ import type { NodeUpdate } from './components/shell/PropertiesPanel.js';
  * Mutates an ERD table in-place with the fields from `update` and returns
  * the same `doc` for chaining. `description === ''` removes the property,
  * `status === null` clears the audit overlay, `undefined` leaves the field
- * untouched. Label updates are intentionally ignored here: an ERD table's
- * label IS its id, so renaming has to update every Relation that points
- * at it — that's a future-PR concern.
+ * untouched.
+ *
+ * Label updates rename the table key and rewrite every relation that
+ * points at the old key. The rename is a silent no-op when the new label
+ * equals the current id, fails SafeIdentifier validation, or collides
+ * with an existing table — the panel then keeps showing the old name
+ * rather than appearing to "lose" the edit.
  *
  * The caller is expected to have JSON-parsed and Zod-validated `doc`
  * already; the extracted helper exists so the mutation step is unit-
@@ -21,6 +25,20 @@ export function applyErdTableUpdate(
 ): Diagram {
   const table = doc.tables[id];
   if (!table) return doc;
+  if (
+    update.label !== undefined &&
+    update.label !== id &&
+    SafeIdentifier.safeParse(update.label).success &&
+    doc.tables[update.label] === undefined
+  ) {
+    const newKey = update.label;
+    doc.tables[newKey] = table;
+    delete doc.tables[id];
+    for (const relation of doc.relations) {
+      if (relation.from.table === id) relation.from.table = newKey;
+      if (relation.to.table === id) relation.to.table = newKey;
+    }
+  }
   if (update.description !== undefined) {
     if (update.description === '') delete table.description;
     else table.description = update.description;
