@@ -112,10 +112,13 @@ export type PersistentStatus = 'open' | 'done' | 'blocked';
 
 export const de: Dict = {
   properties: {
-    title_node: 'Knoten',
+    // MI-4 (v1.1.2): "Knoten" / "Bezeichnung" waren in den User-Tests
+    // unklar. "Typ" beschreibt die Sektion praeziser, "Name" ist die
+    // direkte Eigenschaft der Tabelle / des Knotens.
+    title_node: 'Typ',
     title_empty: 'Diagramm',
     close: 'Panel schliessen',
-    label: 'Bezeichnung',
+    label: 'Name',
     type: 'Typ',
     status: 'Status',
     status_open: 'Offen',
@@ -218,10 +221,11 @@ export const de: Dict = {
 // stay in sync — a missing key fails TypeScript in CI.
 export const en: Dict = {
   properties: {
-    title_node: 'Node',
+    // MI-4 (v1.1.2): see DE comment — same renames in English.
+    title_node: 'Type',
     title_empty: 'Diagram',
     close: 'Close panel',
-    label: 'Label',
+    label: 'Name',
     type: 'Type',
     status: 'Status',
     status_open: 'Open',

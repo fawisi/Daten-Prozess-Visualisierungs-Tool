@@ -44,8 +44,9 @@ describe('i18n dictionaries', () => {
     // A representative sample — the full key-by-key check would be
     // noisy, but at least these high-traffic strings should differ.
     expect(en.topHeader.mode_simple).not.toBe(de.topHeader.mode_simple);
-    expect(en.properties.label).not.toBe(de.properties.label);
+    expect(en.properties.close).not.toBe(de.properties.close);
     expect(en.export.bundle).not.toBe(de.export.bundle);
+    expect(en.empty.canvas_title).not.toBe(de.empty.canvas_title);
   });
 
   it('functional keys still produce strings on en', () => {
@@ -57,5 +58,15 @@ describe('i18n dictionaries', () => {
     expect(
       typeof en.validation.single_start_event({ existing: 'start_1' })
     ).toBe('string');
+  });
+
+  it('MI-4: properties.label is "Name" / "Name" (was "Bezeichnung" / "Label")', () => {
+    expect(de.properties.label).toBe('Name');
+    expect(en.properties.label).toBe('Name');
+  });
+
+  it('MI-4: properties.title_node is "Typ" / "Type" (was "Knoten" / "Node")', () => {
+    expect(de.properties.title_node).toBe('Typ');
+    expect(en.properties.title_node).toBe('Type');
   });
 });
