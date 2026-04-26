@@ -10,6 +10,10 @@ import type { Node, NodeMouseHandler } from '@xyflow/react';
 import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { DiagramTabs } from '@/components/shell/DiagramTabs.js';
 import { TopHeader, type ExportFormat } from '@/components/shell/TopHeader.js';
+import {
+  pickModeKind,
+  shouldShowModeToggle,
+} from '@/components/shell/mode-toggle-helpers.js';
 import { ToolPalette } from '@/components/shell/ToolPalette.js';
 import { PropertiesPanel, type NodeUpdate, type PropertiesPanelProps } from '@/components/shell/PropertiesPanel.js';
 import { CodePanel } from '@/components/shell/CodePanel.js';
@@ -36,6 +40,7 @@ import {
   useToolStore,
   type SelectedNode,
   type ProcessMode,
+  type LandscapeMode,
   type Tool,
 } from '@/state/useToolStore.js';
 import { useApiConfig } from '@/state/ApiConfig.js';
@@ -475,6 +480,7 @@ function EditorShell({
     setCommandPaletteOpen,
     toggleCodePanel,
     setProcessMode,
+    setLandscapeMode,
   } = useToolStore();
   const history = useHistory<Record<string, { x: number; y: number }>>();
 
@@ -559,6 +565,32 @@ function EditorShell({
     };
   }, [activeFile, modeUrl, hiddenUrl, authHeader, setProcessMode]);
 
+  // MA-10: load landscape mode sidecar whenever a landscape file becomes
+  // active. Mirrors the BPMN-mode-load above; defaults to 'l1' if no
+  // sidecar exists yet (server returns `source: 'default'`).
+  const landscapeModeUrl = api.endpoints.landscapeMode;
+  useEffect(() => {
+    if (!activeFile || activeFile.type !== 'landscape') return;
+    if (!landscapeModeUrl) return;
+    const init = authHeader ? { headers: { Authorization: authHeader } } : undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(landscapeModeUrl, init);
+        if (!res.ok) return;
+        const body = (await res.json()) as { mode?: LandscapeMode };
+        if (!cancelled && (body.mode === 'l1' || body.mode === 'l2')) {
+          setLandscapeMode(body.mode);
+        }
+      } catch {
+        /* leave the default 'l1' */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFile, landscapeModeUrl, authHeader, setLandscapeMode]);
+
   const handleModeChange = useCallback(
     async (mode: ProcessMode): Promise<boolean> => {
       const modeUrl = api.endpoints.bpmnMode;
@@ -580,6 +612,30 @@ function EditorShell({
       }
     },
     [api.endpoints.bpmnMode, api.endpoints.authHeader]
+  );
+
+  // MA-10: persist the landscape mode sidecar (l1 | l2). Mirrors
+  // `handleModeChange` for BPMN — same RFC-7807-shaped server response,
+  // same optimistic-revert contract on the client.
+  const handleLandscapeModeChange = useCallback(
+    async (mode: LandscapeMode): Promise<boolean> => {
+      const url = api.endpoints.landscapeMode;
+      if (!url) return false;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (api.endpoints.authHeader) headers.Authorization = api.endpoints.authHeader;
+      try {
+        const res = await fetch(url, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ mode }),
+        });
+        return res.ok;
+      } catch (err) {
+        console.error('Failed to persist landscape mode:', err);
+        return false;
+      }
+    },
+    [api.endpoints.landscapeMode, api.endpoints.authHeader]
   );
 
   // Load source when CodePanel opens or active file changes
@@ -1075,8 +1131,13 @@ function EditorShell({
         }
         onAutoLayout={handleAutoLayout}
         onExport={handleExport}
-        showModeToggle={diagramType === 'bpmn'}
-        onModeChange={handleModeChange}
+        showModeToggle={shouldShowModeToggle(diagramType)}
+        modeKind={pickModeKind(diagramType)}
+        onModeChange={
+          diagramType === 'landscape'
+            ? (mode) => handleLandscapeModeChange(mode as LandscapeMode)
+            : (mode) => handleModeChange(mode as ProcessMode)
+        }
         hiddenElementsCount={hiddenElementsCount}
       />
       {/* v1.1.1 CR-1: Tabs sichtbar sobald >= 1 offen (vorher >= 2). Damit

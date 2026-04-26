@@ -10,6 +10,14 @@ export type { DiagramType, Tool };
 // is declared alongside the heuristic that produces it (kieran N4).
 export type { ProcessMode };
 
+/**
+ * C4-style detail level for the system landscape (MA-10 — v1.1.2).
+ * `l1` shows people + systems; `l2` zooms into a single system's
+ * containers + databases. Persisted via the landscape mode sidecar
+ * (`*.landscape.mode.json`).
+ */
+export type LandscapeMode = 'l1' | 'l2';
+
 export interface SelectedNode {
   id: string;
   type: string;
@@ -30,6 +38,8 @@ interface ToolStoreValue {
   setCommandPaletteOpen: (open: boolean) => void;
   processMode: ProcessMode;
   setProcessMode: (mode: ProcessMode) => void;
+  landscapeMode: LandscapeMode;
+  setLandscapeMode: (mode: LandscapeMode) => void;
 }
 
 const ToolStoreContext = createContext<ToolStoreValue | null>(null);
@@ -61,6 +71,10 @@ export function ToolStoreProvider({ children }: { children: React.ReactNode }) {
   // /bpmn/mode sidecar is loaded (or the heuristic falls back for v1.0
   // files with BPMN-only elements).
   const [processMode, setProcessMode] = useState<ProcessMode>('simple');
+  // Default to 'l1' — Vite-plugin's /landscape/mode endpoint also
+  // defaults there when no sidecar is present, so the UI matches the
+  // server-side fallback (MA-10 — v1.1.2).
+  const [landscapeMode, setLandscapeMode] = useState<LandscapeMode>('l1');
 
   const toggleCodePanel = useCallback(() => setCodePanelOpen((v) => !v), []);
   const toggleCommandPalette = useCallback(() => setCommandPaletteOpen((v) => !v), []);
@@ -129,6 +143,8 @@ export function ToolStoreProvider({ children }: { children: React.ReactNode }) {
       setCommandPaletteOpen,
       processMode,
       setProcessMode,
+      landscapeMode,
+      setLandscapeMode,
     }),
     [
       activeTool,
@@ -138,6 +154,7 @@ export function ToolStoreProvider({ children }: { children: React.ReactNode }) {
       toggleCodePanel,
       toggleCommandPalette,
       processMode,
+      landscapeMode,
     ]
   );
 

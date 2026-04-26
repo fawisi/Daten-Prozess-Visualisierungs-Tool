@@ -1,27 +1,41 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button.js';
 import { Code2, Download, FileJson, Wand2, Moon, Sun } from 'lucide-react';
-import { useToolStore, type ProcessMode } from '@/state/useToolStore.js';
+import {
+  useToolStore,
+  type ProcessMode,
+  type LandscapeMode,
+} from '@/state/useToolStore.js';
 import { useTheme } from '@/state/useTheme.js';
 import { useI18n } from '@/i18n/useI18n.js';
 import { cn } from '@/lib/utils.js';
 
 export type ExportFormat = 'mermaid' | 'sql' | 'dbml' | 'svg' | 'png' | 'bundle';
 
+/** Discriminator for the mode-toggle (MA-10). */
+export type ModeToggleKind = 'process' | 'landscape';
+
 interface TopHeaderProps {
   fileName: string | null;
   badge?: string;
   onAutoLayout: () => void;
   onExport: (format: ExportFormat) => void;
-  /** When set, renders the process-mode toggle (BPMN-only). Hidden for ERD files. */
+  /** When set, renders the appropriate mode-toggle for the active diagram. */
   showModeToggle?: boolean;
   /**
-   * Called with the new mode. Must return a Promise resolving to `true`
-   * on successful persistence — the toggle will revert its optimistic
-   * UI state to the previous mode on `false` so the UI never drifts
-   * from disk (kieran-review P1 B2).
+   * Which two-state toggle to render. `'process'` flips ProcessMode
+   * ('simple' | 'bpmn'); `'landscape'` flips LandscapeMode ('l1' | 'l2').
+   * Defaults to 'process' so existing call-sites keep working.
    */
-  onModeChange?: (mode: ProcessMode) => Promise<boolean> | void;
+  modeKind?: ModeToggleKind;
+  /**
+   * Called with the new mode. Must return a Promise resolving to `true`
+   * on successful persistence — the toggle reverts its optimistic UI
+   * state to the previous mode on `false` so the UI never drifts from
+   * disk (kieran-review P1 B2).
+   */
+  onModeChange?: (mode: ProcessMode | LandscapeMode) => Promise<boolean> | void;
+  /** Process-mode only: count of BPMN-only elements hidden in simple view. */
   hiddenElementsCount?: number;
 }
 
@@ -35,21 +49,39 @@ export function TopHeader({
   onAutoLayout,
   onExport,
   showModeToggle = false,
+  modeKind = 'process',
   onModeChange,
   hiddenElementsCount = 0,
 }: TopHeaderProps) {
-  const { codePanelOpen, toggleCodePanel, processMode, setProcessMode } = useToolStore();
+  const {
+    codePanelOpen,
+    toggleCodePanel,
+    processMode,
+    setProcessMode,
+    landscapeMode,
+    setLandscapeMode,
+  } = useToolStore();
   const { resolved, toggle } = useTheme();
   const { t } = useI18n();
   const [exportOpen, setExportOpen] = useState(false);
 
-  async function handleModeChange(next: ProcessMode) {
+  async function handleProcessModeChange(next: ProcessMode) {
     const previous = processMode;
-    setProcessMode(next); // optimistic — snaps back below on PUT failure
+    setProcessMode(next);
     const result = onModeChange?.(next);
     if (result instanceof Promise) {
       const ok = await result;
       if (!ok) setProcessMode(previous);
+    }
+  }
+
+  async function handleLandscapeModeChange(next: LandscapeMode) {
+    const previous = landscapeMode;
+    setLandscapeMode(next);
+    const result = onModeChange?.(next);
+    if (result instanceof Promise) {
+      const ok = await result;
+      if (!ok) setLandscapeMode(previous);
     }
   }
 
@@ -75,7 +107,7 @@ export function TopHeader({
       </div>
 
       <div className="flex items-center gap-2">
-        {showModeToggle && (
+        {showModeToggle && modeKind === 'process' && (
           <div
             role="radiogroup"
             aria-label={t.topHeader.mode_toggle_aria}
@@ -84,12 +116,12 @@ export function TopHeader({
             <ModeSegment
               active={processMode === 'simple'}
               label={t.topHeader.mode_simple}
-              onClick={() => handleModeChange('simple')}
+              onClick={() => handleProcessModeChange('simple')}
             />
             <ModeSegment
               active={processMode === 'bpmn'}
               label={t.topHeader.mode_bpmn}
-              onClick={() => handleModeChange('bpmn')}
+              onClick={() => handleProcessModeChange('bpmn')}
             />
             {processMode === 'simple' && hiddenElementsCount > 0 && (
               <span
@@ -99,6 +131,24 @@ export function TopHeader({
                 {hiddenElementsCount}
               </span>
             )}
+          </div>
+        )}
+        {showModeToggle && modeKind === 'landscape' && (
+          <div
+            role="radiogroup"
+            aria-label={t.topHeader.mode_toggle_landscape_aria}
+            className="flex items-center h-8 rounded-md border bg-background p-0.5"
+          >
+            <ModeSegment
+              active={landscapeMode === 'l1'}
+              label={t.topHeader.mode_l1}
+              onClick={() => handleLandscapeModeChange('l1')}
+            />
+            <ModeSegment
+              active={landscapeMode === 'l2'}
+              label={t.topHeader.mode_l2}
+              onClick={() => handleLandscapeModeChange('l2')}
+            />
           </div>
         )}
         <Button

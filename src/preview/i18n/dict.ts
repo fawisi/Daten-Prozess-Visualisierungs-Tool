@@ -71,6 +71,10 @@ export interface Dict {
     mode_bpmn: string;
     mode_toggle_aria: string;
     mode_hidden_hint: (args: { count: number }) => string;
+    /** C4 Landscape detail level (MA-10 — v1.1.2). */
+    mode_l1: string;
+    mode_l2: string;
+    mode_toggle_landscape_aria: string;
   };
   export: {
     mermaid: string;
@@ -164,6 +168,9 @@ export const de: Dict = {
     mode_toggle_aria: 'Prozess-Modus umschalten',
     mode_hidden_hint: ({ count }) =>
       `${count} ${count === 1 ? 'versteckt' : 'versteckte'} BPMN-Element${count === 1 ? '' : 'e'}`,
+    mode_l1: 'L1 Kontext',
+    mode_l2: 'L2 Container',
+    mode_toggle_landscape_aria: 'Landscape-Detailgrad umschalten',
   },
   export: {
     mermaid: 'Mermaid',
