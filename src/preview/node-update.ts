@@ -29,6 +29,13 @@ export function applyErdTableUpdate(
     if (update.status === null) delete table.status;
     else table.status = update.status;
   }
+  if (update.columns !== undefined) {
+    // Full replacement: caller sends the entire desired array. Empty
+    // arrays would violate the schema's `min(1)` rule, but we forward
+    // the bad shape to the server intentionally — the user sees a 400
+    // rather than the panel silently swallowing the invalid edit.
+    table.columns = update.columns;
+  }
   return doc;
 }
 

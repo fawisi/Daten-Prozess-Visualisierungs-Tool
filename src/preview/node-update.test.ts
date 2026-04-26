@@ -84,6 +84,39 @@ describe('applyErdTableUpdate', () => {
     applyErdTableUpdate(doc, 'users', { description: 'Updated' });
     expect(doc.tables.users!.status).toBe('open');
   });
+
+  it('replaces the full columns array on a columns update (MA-11)', () => {
+    const doc = fixtureDiagram();
+    applyErdTableUpdate(doc, 'users', {
+      columns: [
+        { name: 'id', type: 'uuid', primary: true },
+        { name: 'email', type: 'varchar' },
+        { name: 'created_at', type: 'timestamp' },
+      ],
+    });
+    expect(doc.tables.users!.columns).toHaveLength(3);
+    expect(doc.tables.users!.columns[1]!.name).toBe('email');
+  });
+
+  it('preserves description+status on existing columns when round-tripped (MA-11)', () => {
+    const doc = fixtureDiagram();
+    // Put a column with audit metadata in place first.
+    doc.tables.users!.columns = [
+      {
+        name: 'id',
+        type: 'uuid',
+        primary: true,
+        description: 'Primary id',
+        status: 'done',
+      },
+    ];
+    // Caller (PropertiesPanel) round-trips the full Column shape.
+    applyErdTableUpdate(doc, 'users', {
+      columns: [...doc.tables.users!.columns],
+    });
+    expect(doc.tables.users!.columns[0]!.description).toBe('Primary id');
+    expect(doc.tables.users!.columns[0]!.status).toBe('done');
+  });
 });
 
 describe('applyLandscapeNodeUpdate', () => {

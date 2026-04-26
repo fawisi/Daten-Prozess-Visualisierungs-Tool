@@ -31,6 +31,14 @@ export interface Dict {
     empty_hint_head: string;
     empty_hint_body: string;
     hidden_elements: (args: { count: number }) => string;
+    /** ERD column-list section (MA-11 — v1.1.2). */
+    columns: string;
+    column_name_placeholder: string;
+    column_type_placeholder: string;
+    column_primary: string;
+    column_remove: string;
+    column_remove_disabled: string;
+    add_column: string;
   };
   toolPalette: {
     pointer: string;
@@ -119,6 +127,13 @@ export const de: Dict = {
       'Klicke einen Knoten im Canvas, oder nutze Cmd+K fuer die Command-Palette.',
     hidden_elements: ({ count }) =>
       `${count} versteckte${count === 1 ? 's' : ''} BPMN-Element${count === 1 ? '' : 'e'}`,
+    columns: 'Spalten',
+    column_name_placeholder: 'Spaltenname',
+    column_type_placeholder: 'Datentyp',
+    column_primary: 'PK',
+    column_remove: 'Spalte entfernen',
+    column_remove_disabled: 'Mindestens eine Spalte muss bleiben',
+    add_column: 'Spalte hinzufuegen',
   },
   toolPalette: {
     pointer: 'Auswahl',
