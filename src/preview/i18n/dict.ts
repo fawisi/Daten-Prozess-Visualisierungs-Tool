@@ -211,9 +211,107 @@ export const de: Dict = {
   },
 };
 
-// EN-Dict deliberately not exported in v1.1 (plan R11: "EN-Dict empty
-// shape in v1.1"). Re-export here once EN values have been audited by
-// a native speaker — shipping DE strings under an "EN" label is worse
-// than a single-language app. Until then, `Locale` below narrows to
-// `'de'` and the `VisoEditor` prop rejects other values at the type
-// level.
+// EN-Dict — same key-shape as `de`, English values. Added in v1.1.2
+// (MI-2). Hub consumers can flip the locale prop now; copy is a clean
+// translation, not auto-generated, but expect refinement based on
+// actual EN-locale user feedback. The Dict-Type forces both locales to
+// stay in sync — a missing key fails TypeScript in CI.
+export const en: Dict = {
+  properties: {
+    title_node: 'Node',
+    title_empty: 'Diagram',
+    close: 'Close panel',
+    label: 'Label',
+    type: 'Type',
+    status: 'Status',
+    status_open: 'Open',
+    status_done: 'Done',
+    status_blocked: 'Blocked',
+    comment: 'Comment',
+    comment_placeholder: 'Add a note...',
+    attachments: 'Attachments',
+    diagram: 'Diagram',
+    format: 'Format',
+    empty_hint_head: 'Nothing selected',
+    empty_hint_body:
+      'Click a node on the canvas, or use Cmd+K to open the command palette.',
+    hidden_elements: ({ count }) =>
+      `${count} hidden BPMN element${count === 1 ? '' : 's'}`,
+    columns: 'Columns',
+    column_name_placeholder: 'Column name',
+    column_type_placeholder: 'Data type',
+    column_primary: 'PK',
+    column_remove: 'Remove column',
+    column_remove_disabled: 'At least one column must remain',
+    add_column: 'Add column',
+  },
+  toolPalette: {
+    pointer: 'Select',
+    pan: 'Pan',
+    task: 'Task',
+    gateway: 'Gateway',
+    start_event: 'Start',
+    end_event: 'End',
+    table: 'Table',
+    lc_person: 'Person',
+    lc_system: 'System',
+    lc_external: 'External system',
+    lc_container: 'Container',
+    lc_database: 'Database',
+  },
+  topHeader: {
+    app_name: 'viso-mcp',
+    auto_layout: 'Auto-Layout',
+    auto_layout_title: 'Auto-Layout (ELK)',
+    code: 'Code',
+    code_title: 'Toggle code panel (Cmd+/)',
+    export: 'Export',
+    language_switch: 'Language',
+    theme_switch_light: 'Switch to Light Mode',
+    theme_switch_dark: 'Switch to Dark Mode',
+    mode_simple: 'Simple',
+    mode_bpmn: 'BPMN Pro',
+    mode_toggle_aria: 'Toggle process mode',
+    mode_hidden_hint: ({ count }) =>
+      `${count} hidden BPMN element${count === 1 ? '' : 's'}`,
+    mode_l1: 'L1 Context',
+    mode_l2: 'L2 Container',
+    mode_toggle_landscape_aria: 'Toggle landscape detail level',
+  },
+  export: {
+    mermaid: 'Mermaid',
+    sql: 'SQL DDL',
+    dbml: 'DBML',
+    svg: 'SVG image',
+    png: 'PNG image',
+    bundle: 'Handoff Bundle',
+    error_sql_requires_http:
+      'SQL export requires the HTTP adapter. Start `viso-mcp http` or configure `apiBaseUrl`.',
+    error_mermaid_requires_http:
+      'Mermaid export requires the HTTP adapter. Start `viso-mcp http` or configure `apiBaseUrl`.',
+    error_sql_erd_only: 'SQL export is only available for ERD diagrams.',
+    error_dbml_erd_only: 'DBML export is only available for ERD diagrams.',
+    error_http_fail: ({ status, detail }) =>
+      `HTTP export failed (${status}): ${detail}`,
+  },
+  empty: {
+    canvas_title: 'No diagram loaded',
+    canvas_hint:
+      'Click a tool in the sidebar or press Cmd+K for the command palette.',
+    bpmn_placeholder:
+      'No process nodes yet. Click the Task tool (shortcut 3) and then the canvas to place your first node.',
+    erd_placeholder:
+      'No tables yet. Click the Table tool (shortcut 5) and then the canvas to add your first table.',
+    landscape_placeholder:
+      'No landscape nodes yet. Click a landscape tool (shortcut 6 through 0) and then the canvas.',
+  },
+  footer: {
+    tagline:
+      'Canvas-first drawing · tools left · properties right for the selected node',
+    tagline_hint: 'Cmd+/ opens the code panel (pro mode)',
+  },
+  validation: {
+    single_start_event: ({ existing }) =>
+      `The process already has a start event ("${existing}"). Only one is allowed.`,
+  },
+};

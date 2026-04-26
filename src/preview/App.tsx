@@ -129,6 +129,7 @@ function ErdCanvas({
 }) {
   const api = useApiConfig();
   const sync = useDiagramSync();
+  const { t } = useI18n();
   const { nodes, edges, status, isEmpty, onNodesChange } = sync;
 
   useEffect(() => {
@@ -213,7 +214,7 @@ function ErdCanvas({
         />
         <Controls />
       </ReactFlow>
-      {isEmpty && <EmptyState message="Noch keine Tabellen. Klicke das Tabellen-Werkzeug (Shortcut 5) und dann auf den Canvas, um deine erste Tabelle anzulegen." />}
+      {isEmpty && <EmptyState message={t.empty.erd_placeholder} />}
       <StatusIndicator status={status} />
     </div>
   );
@@ -230,6 +231,7 @@ function BpmnCanvas({
 }) {
   const api = useApiConfig();
   const sync = useProcessSync();
+  const { t } = useI18n();
   const { nodes, edges, status, isEmpty, onNodesChange } = sync;
 
   useEffect(() => {
@@ -323,7 +325,7 @@ function BpmnCanvas({
           </defs>
         </svg>
       </ReactFlow>
-      {isEmpty && <EmptyState message="Noch keine Prozess-Knoten. Klicke das Task-Werkzeug (Shortcut 3) und dann auf den Canvas, um deinen ersten Knoten zu setzen." />}
+      {isEmpty && <EmptyState message={t.empty.bpmn_placeholder} />}
       <StatusIndicator status={status} />
     </div>
   );
@@ -341,6 +343,7 @@ function LandscapeCanvas({
 }) {
   const api = useApiConfig();
   const sync = useLandscapeSync();
+  const { t } = useI18n();
   const { nodes, edges, status, isEmpty, onNodesChange } = sync;
 
   useEffect(() => {
@@ -426,9 +429,7 @@ function LandscapeCanvas({
         />
         <Controls />
       </ReactFlow>
-      {isEmpty && (
-        <EmptyState message="Noch keine Landscape-Knoten. Klicke ein Landscape-Werkzeug (Shortcut 6 bis 0) und dann auf den Canvas." />
-      )}
+      {isEmpty && <EmptyState message={t.empty.landscape_placeholder} />}
       <StatusIndicator status={status} />
     </div>
   );

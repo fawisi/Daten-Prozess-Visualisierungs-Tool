@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { de } from './dict.js';
+import { de, en } from './dict.js';
 import type { Dict, PersistentStatus } from './dict.js';
 
-// v1.1: DE only. EN shape in dict.ts is ready for the second-locale
-// audit; narrowing here prevents the VisoEditor prop from accepting
-// 'en' at the type level (kieran-review B1).
-export type Locale = 'de';
+// v1.1.2 (MI-2): EN dict shipped with the same key shape as DE. Hub
+// consumers can pass `locale="en"`; the Dict interface forces both
+// locales to stay in sync at the type level, so a missing key fails
+// TypeScript before it can reach a runtime fallback.
+export type Locale = 'de' | 'en';
 
 interface I18nContextValue {
   locale: Locale;
@@ -16,7 +17,7 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-const DICTS: Record<Locale, Dict> = { de };
+const DICTS: Record<Locale, Dict> = { de, en };
 
 // Module-level const so the fallback path does not allocate a new
 // object per `useI18n()` call — downstream consumers memoize cheaply.
