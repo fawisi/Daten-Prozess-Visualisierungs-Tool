@@ -33,9 +33,12 @@ interface ApiConfigValue {
 }
 
 const DEFAULT_ENDPOINTS: ApiEndpoints = {
-  erdSchema: '/__viso-api/schema',
-  erdPositions: '/__viso-api/positions',
-  erdSource: '/__viso-api/source',
+  // MA-5: canonical /erd/* form lines up with /bpmn/* and /landscape/*.
+  // The Vite plugin aliases these back to the legacy unprefixed routes
+  // so old clients calling /__viso-api/source still work.
+  erdSchema: '/__viso-api/erd/schema',
+  erdPositions: '/__viso-api/erd/positions',
+  erdSource: '/__viso-api/erd/source',
   erdPut: null,
   bpmnSchema: '/__viso-api/bpmn/schema',
   bpmnPositions: '/__viso-api/bpmn/positions',

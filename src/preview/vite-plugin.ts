@@ -9,6 +9,7 @@ import { inferProcessMode, bpmnOnlyNodeIds } from '../bpmn/mode-heuristic.js';
 import { LandscapeSchema } from '../landscape/schema.js';
 import { DiagramSchema } from '../schema.js';
 import { writeValidatedRawBody } from './vite-validation.js';
+import { rewriteCanonicalErdUrl } from './url-aliases.js';
 import { z } from 'zod';
 
 // RFC-7807 Problem-Type base URIs per diagram. v1.1.1 hardens all three
@@ -88,6 +89,11 @@ export function visoPlugin(
 
       // API routes
       server.middlewares.use(async (req, res, next) => {
+        // MA-5: rewrite the v1.1.2 canonical /__viso-api/erd/* URLs to the
+        // legacy unprefixed shape the route handlers below still match
+        // against. Old clients keep working unchanged.
+        req.url = rewriteCanonicalErdUrl(req.url);
+
         // === ERD Routes ===
         if (req.url === '/__viso-api/schema' && req.method === 'GET') {
           return serveFile(res, erdSchemaPath, {
