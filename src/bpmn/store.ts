@@ -5,7 +5,7 @@ import { ProcessSchema, emptyProcess } from './schema.js';
 import type { Process } from './schema.js';
 
 export class ProcessStore {
-  constructor(private filePath: string) {}
+  constructor(public readonly filePath: string) {}
 
   async load(): Promise<Process> {
     let raw: string;

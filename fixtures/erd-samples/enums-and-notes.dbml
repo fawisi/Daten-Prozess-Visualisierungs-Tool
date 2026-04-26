@@ -1,0 +1,20 @@
+enum subscription_status {
+  active
+  cancelled
+  past_due
+}
+
+Table subscriptions {
+  id uuid [pk]
+  tenant_id uuid [not null]
+  status subscription_status [not null, note: 'Billed monthly by default']
+  started_at timestamptz [not null]
+  Note: 'All billing timestamps are in UTC'
+}
+
+Table tenants {
+  id uuid [pk]
+  name varchar(128) [not null]
+}
+
+Ref: subscriptions.tenant_id > tenants.id

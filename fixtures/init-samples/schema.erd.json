@@ -1,0 +1,45 @@
+{
+  "format": "viso-erd-v1",
+  "name": "Sample E-Commerce",
+  "tables": {
+    "customers": {
+      "columns": [
+        { "name": "id", "type": "uuid", "primary": true },
+        { "name": "email", "type": "varchar(255)", "description": "Login email, unique" },
+        { "name": "name", "type": "varchar(128)" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    "products": {
+      "columns": [
+        { "name": "id", "type": "uuid", "primary": true },
+        { "name": "name", "type": "varchar(256)" },
+        { "name": "price_cents", "type": "integer", "description": "Stored in minor units" },
+        { "name": "sku", "type": "varchar(64)" }
+      ]
+    },
+    "orders": {
+      "columns": [
+        { "name": "id", "type": "uuid", "primary": true },
+        { "name": "customer_id", "type": "uuid" },
+        { "name": "status", "type": "varchar(32)", "description": "pending | paid | shipped | cancelled" },
+        { "name": "total_cents", "type": "integer" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    "order_items": {
+      "columns": [
+        { "name": "id", "type": "uuid", "primary": true },
+        { "name": "order_id", "type": "uuid" },
+        { "name": "product_id", "type": "uuid" },
+        { "name": "quantity", "type": "integer" },
+        { "name": "unit_price_cents", "type": "integer" }
+      ]
+    }
+  },
+  "relations": [
+    { "from": { "table": "orders", "column": "customer_id" }, "to": { "table": "customers", "column": "id" }, "type": "many-to-one" },
+    { "from": { "table": "order_items", "column": "order_id" }, "to": { "table": "orders", "column": "id" }, "type": "many-to-one" },
+    { "from": { "table": "order_items", "column": "product_id" }, "to": { "table": "products", "column": "id" }, "type": "many-to-one" }
+  ]
+}

@@ -4,9 +4,11 @@ import '@xyflow/react/dist/style.css';
 import './styles/globals.css';
 import './styles/canvas.css';
 import { App } from './App.js';
-
-// Always dark mode
-document.documentElement.classList.add('dark');
+import { ThemeProvider } from './state/useTheme.js';
 
 const root = createRoot(document.getElementById('root')!);
-root.render(<App />);
+root.render(
+  <ThemeProvider>
+    <App />
+  </ThemeProvider>
+);

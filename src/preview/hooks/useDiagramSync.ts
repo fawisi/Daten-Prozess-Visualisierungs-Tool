@@ -4,8 +4,11 @@ import type { Node, Edge, NodeChange } from '@xyflow/react';
 import type { Diagram, Positions } from '../../schema.js';
 import type { ConnectionStatus } from '../components/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
+import { useApiConfig } from '../state/ApiConfig.js';
+import { authInit, resolveWsUrl } from '../state/apiHelpers.js';
+import { isInitialAutoLayoutNeeded } from './auto-layout.js';
 
-const WS_PATH = '/__daten-viz-ws';
+const DEFAULT_WS_PATH = '/__viso-ws';
 const RECONNECT_INTERVAL = 2000;
 const POSITION_WRITE_DEBOUNCE = 500;
 
@@ -18,6 +21,7 @@ function diagramToNodesAndEdges(diagram: Diagram): { nodes: Node[]; edges: Edge[
       label: name,
       columns: table.columns,
       description: table.description,
+      status: table.status,
     },
   }));
 
@@ -35,6 +39,7 @@ function diagramToNodesAndEdges(diagram: Diagram): { nodes: Node[]; edges: Edge[
 }
 
 export function useDiagramSync() {
+  const api = useApiConfig();
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
@@ -42,14 +47,42 @@ export function useDiagramSync() {
   const positionsRef = useRef<Positions>({});
   const writeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  // MA-9: one-shot guard so the initial ELK layout is persisted exactly
+  // once per hook lifecycle, even when the WebSocket reconnects.
+  const autoLayoutDoneRef = useRef(false);
+
+  // Debounced position writer
+  const savePositions = useCallback((updatedNodes: Node[]) => {
+    const positions: Positions = {};
+    for (const node of updatedNodes) {
+      positions[node.id] = { x: node.position.x, y: node.position.y };
+    }
+    positionsRef.current = positions;
+
+    if (writeTimeoutRef.current) {
+      clearTimeout(writeTimeoutRef.current);
+    }
+    writeTimeoutRef.current = setTimeout(() => {
+      fetch(api.endpoints.erdPositions, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
+        },
+        body: JSON.stringify(positions),
+      }).catch((err) => console.error('Failed to save positions:', err));
+    }, POSITION_WRITE_DEBOUNCE);
+  }, [api]);
 
   const loadSchema = useCallback(async () => {
     try {
       const [schemaRes, posRes] = await Promise.all([
-        fetch('/__daten-viz-api/schema'),
-        fetch('/__daten-viz-api/positions'),
+        fetch(api.endpoints.erdSchema, authInit(api.endpoints.authHeader)),
+        fetch(api.endpoints.erdPositions, authInit(api.endpoints.authHeader)),
       ]);
-      const diagram: Diagram = await schemaRes.json();
+      const raw = await schemaRes.json();
+      // Hub adapter wraps payloads in { ok, data }; Vite returns the raw diagram.
+      const diagram: Diagram = raw?.data ?? raw;
       const positions: Positions = posRes.ok ? await posRes.json() : {};
       positionsRef.current = positions;
 
@@ -66,10 +99,21 @@ export function useDiagramSync() {
       const laidOut = await computeLayout(rawNodes, rawEdges, positions);
       setNodes(laidOut);
       setEdges(rawEdges);
+
+      // MA-9: persist the initial ELK arrangement exactly once when no
+      // sidecar exists yet — pinning the layout so subsequent reloads
+      // don't reshuffle it after a single drag.
+      if (
+        !autoLayoutDoneRef.current &&
+        isInitialAutoLayoutNeeded(positions, laidOut.length)
+      ) {
+        autoLayoutDoneRef.current = true;
+        savePositions(laidOut);
+      }
     } catch (err) {
       console.error('Failed to load schema:', err);
     }
-  }, []);
+  }, [api, savePositions]);
 
   // WebSocket connection
   useEffect(() => {
@@ -77,8 +121,8 @@ export function useDiagramSync() {
     let mounted = true;
 
     function connect() {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${window.location.host}${WS_PATH}`);
+      const wsUrl = resolveWsUrl(api.endpoints.wsUrl ?? DEFAULT_WS_PATH, window.location.protocol);
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -117,27 +161,7 @@ export function useDiagramSync() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [loadSchema]);
-
-  // Debounced position writer
-  const savePositions = useCallback((updatedNodes: Node[]) => {
-    const positions: Positions = {};
-    for (const node of updatedNodes) {
-      positions[node.id] = { x: node.position.x, y: node.position.y };
-    }
-    positionsRef.current = positions;
-
-    if (writeTimeoutRef.current) {
-      clearTimeout(writeTimeoutRef.current);
-    }
-    writeTimeoutRef.current = setTimeout(() => {
-      fetch('/__daten-viz-api/positions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(positions),
-      }).catch((err) => console.error('Failed to save positions:', err));
-    }, POSITION_WRITE_DEBOUNCE);
-  }, []);
+  }, [loadSchema, api]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -155,5 +179,40 @@ export function useDiagramSync() {
     [savePositions]
   );
 
-  return { nodes, edges, status, isEmpty, onNodesChange, setNodes, setEdges };
+  const applyAutoLayout = useCallback(async () => {
+    if (nodes.length === 0) return;
+    const laidOut = await computeLayout(nodes, edges, {});
+    setNodes(laidOut);
+    savePositions(laidOut);
+  }, [nodes, edges, savePositions]);
+
+  const applyPositions = useCallback((positions: Positions) => {
+    setNodes((prev) =>
+      prev.map((n) =>
+        positions[n.id]
+          ? { ...n, position: { x: positions[n.id].x, y: positions[n.id].y } }
+          : n
+      )
+    );
+  }, []);
+
+  const snapshotPositions = useCallback((): Positions => {
+    const snap: Positions = {};
+    for (const n of nodes) snap[n.id] = { x: n.position.x, y: n.position.y };
+    return snap;
+  }, [nodes]);
+
+  return {
+    nodes,
+    edges,
+    status,
+    isEmpty,
+    onNodesChange,
+    setNodes,
+    setEdges,
+    applyAutoLayout,
+    applyPositions,
+    snapshotPositions,
+    savePositions,
+  };
 }

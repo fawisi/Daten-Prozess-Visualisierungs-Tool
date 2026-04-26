@@ -1,0 +1,127 @@
+name: Release
+
+# Triggers on version tags (v1.2.3, v1.2.3-rc.1, etc.) or manual dispatch.
+# Tag-first so the version bump commit on main and the npm publish are a
+# reviewable unit: cut a tag, workflow validates the exact commit tree,
+# publishes if every gate passes.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+# Minimum-viable permissions at the workflow level. The `publish` job
+# escalates to `id-token: write` for OIDC, but the `verify-and-build`
+# job runs without that scope on purpose — it's the job that exposes the
+# largest dependency-install surface, so it must not be able to mint a
+# Trusted-Publishing token even if a postinstall script tries to exfil it.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-and-build:
+    name: Verify + build + test + package gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version checks run BEFORE `npm ci` (which invokes postinstall
+      # scripts across ~500 transitive deps). If the tag doesn't match
+      # package.json, fail before any third-party code executes — the
+      # classic fix for the gate-then-install TOCTOU window.
+      - name: Verify tag matches package.json version
+        if: github.event_name == 'push'
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME (-> $TAG_VERSION) does not match package.json $PKG_VERSION" >&2
+            exit 1
+          fi
+
+      # server.json drives MCP Registry submission; its version fields must
+      # match package.json or the registry entry points at a missing npm tag.
+      - name: Verify server.json version matches package.json
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          SRV_TOP="$(node -p "require('./server.json').version_detail.version")"
+          SRV_PKG="$(node -p "require('./server.json').packages[0].version")"
+          if [ "$PKG_VERSION" != "$SRV_TOP" ] || [ "$PKG_VERSION" != "$SRV_PKG" ]; then
+            echo "server.json versions ($SRV_TOP / $SRV_PKG) drift from package.json $PKG_VERSION" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Full release gate: build, 207 tests, publint, attw, size-limit.
+      # Runs in a job WITHOUT id-token:write so a malicious postinstall
+      # here cannot exchange OIDC for an npm publish token.
+      - name: Install dependencies (lockfile-frozen)
+        run: npm ci
+
+      - name: Release gate (check:release)
+        run: npm run check:release
+
+      # Hand the built dist/ + metadata to the publish job. The publish
+      # job re-checks out the tag but reinstalls nothing — dist/ comes
+      # straight from this verified build.
+      - name: Upload dist + metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifact
+          path: |
+            dist/
+            package.json
+            package-lock.json
+            README.md
+            CHANGELOG.md
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Publish to npm (Trusted Publishing)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: verify-and-build
+    # workflow_dispatch from main would otherwise publish whatever
+    # package.json says; tag-only gating ensures every publish corresponds
+    # to a signed-off release tag.
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: release
+
+    permissions:
+      # OIDC mint rights ONLY in this job. No `npm ci` runs here, so no
+      # postinstall script ever sees ACTIONS_ID_TOKEN_REQUEST_URL.
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download verified build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifact
+
+      # Under Trusted Publishing (npm >= 11.5) the runner authenticates via
+      # OIDC; provenance attestations are attached automatically. No --token,
+      # no --provenance flag needed — npm detects the id-token and does both.
+      # No `npm ci` — we only need dist/ and package.json to publish.
+      - name: Publish to npm
+        run: npm publish --access public --ignore-scripts

@@ -3,16 +3,31 @@ import { watch } from 'chokidar';
 import { WebSocketServer, WebSocket } from 'ws';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { loadModeSidecar, saveModeSidecar } from '../mode-sidecar.js';
+import { ProcessSchema } from '../bpmn/schema.js';
+import { inferProcessMode, bpmnOnlyNodeIds } from '../bpmn/mode-heuristic.js';
+import { LandscapeSchema } from '../landscape/schema.js';
+import { DiagramSchema } from '../schema.js';
+import { writeValidatedRawBody } from './vite-validation.js';
+import { rewriteCanonicalErdUrl } from './url-aliases.js';
+import { z } from 'zod';
 
-interface DatenVizPluginOptions {
+// RFC-7807 Problem-Type base URIs per diagram. v1.1.1 hardens all three
+// PUT-source endpoints with Zod-validation + atomic write (CR-4).
+const PROBLEM_BASE_ERD = 'https://viso-mcp.dev/problems/erd';
+const PROBLEM_BASE_BPMN = 'https://viso-mcp.dev/problems/bpmn';
+const PROBLEM_BASE_LANDSCAPE = 'https://viso-mcp.dev/problems/landscape';
+
+interface VisoPluginOptions {
   erdFile: string;
   bpmnFile: string;
+  landscapeFile?: string;
 }
 
-export function datenVizPlugin(
-  erdFileOrOptions: string | DatenVizPluginOptions
+export function visoPlugin(
+  erdFileOrOptions: string | VisoPluginOptions
 ): Plugin {
-  const options: DatenVizPluginOptions =
+  const options: VisoPluginOptions =
     typeof erdFileOrOptions === 'string'
       ? { erdFile: erdFileOrOptions, bpmnFile: erdFileOrOptions.replace(/\.erd\.json$/, '.bpmn.json').replace(/^(.*)\/[^/]+$/, '$1/process.bpmn.json') }
       : erdFileOrOptions;
@@ -21,6 +36,11 @@ export function datenVizPlugin(
   const erdPositionsPath = erdSchemaPath.replace(/\.erd\.json$/, '.erd.pos.json');
   const bpmnSchemaPath = resolve(options.bpmnFile);
   const bpmnPositionsPath = bpmnSchemaPath.replace(/\.bpmn\.json$/, '.bpmn.pos.json');
+  const landscapeSchemaPath = resolve(options.landscapeFile ?? 'landscape.landscape.json');
+  const landscapePositionsPath = landscapeSchemaPath.replace(
+    /\.landscape\.json$/,
+    '.landscape.pos.json'
+  );
 
   let wss: WebSocketServer;
 
@@ -34,14 +54,14 @@ export function datenVizPlugin(
   }
 
   return {
-    name: 'daten-viz',
+    name: 'viso',
     configureServer(server: ViteDevServer) {
       wss = new WebSocketServer({ noServer: true });
 
       if (!server.httpServer) return;
 
       server.httpServer.on('upgrade', (req, socket, head) => {
-        if (req.url === '/__daten-viz-ws') {
+        if (req.url === '/__viso-ws') {
           wss.handleUpgrade(req, socket, head, (ws) => {
             wss.emit('connection', ws, req);
           });
@@ -69,16 +89,21 @@ export function datenVizPlugin(
 
       // API routes
       server.middlewares.use(async (req, res, next) => {
+        // MA-5: rewrite the v1.1.2 canonical /__viso-api/erd/* URLs to the
+        // legacy unprefixed shape the route handlers below still match
+        // against. Old clients keep working unchanged.
+        req.url = rewriteCanonicalErdUrl(req.url);
+
         // === ERD Routes ===
-        if (req.url === '/__daten-viz-api/schema' && req.method === 'GET') {
+        if (req.url === '/__viso-api/schema' && req.method === 'GET') {
           return serveFile(res, erdSchemaPath, {
-            format: 'daten-viz-erd-v1',
+            format: 'viso-erd-v1',
             tables: {},
             relations: [],
           });
         }
 
-        if (req.url === '/__daten-viz-api/positions') {
+        if (req.url === '/__viso-api/positions') {
           if (req.method === 'GET') {
             return serveFile(res, erdPositionsPath, {});
           }
@@ -87,16 +112,32 @@ export function datenVizPlugin(
           }
         }
 
+        // Raw ERD source (for Code Panel)
+        if (req.url === '/__viso-api/source') {
+          if (req.method === 'GET') {
+            return serveRaw(res, erdSchemaPath, '{}');
+          }
+          if (req.method === 'PUT') {
+            return writeValidatedRawBody(
+              req,
+              res,
+              erdSchemaPath,
+              DiagramSchema,
+              PROBLEM_BASE_ERD
+            );
+          }
+        }
+
         // === BPMN Routes ===
-        if (req.url === '/__daten-viz-api/bpmn/schema' && req.method === 'GET') {
+        if (req.url === '/__viso-api/bpmn/schema' && req.method === 'GET') {
           return serveFile(res, bpmnSchemaPath, {
-            format: 'daten-viz-bpmn-v1',
+            format: 'viso-bpmn-v1',
             nodes: {},
             flows: [],
           });
         }
 
-        if (req.url === '/__daten-viz-api/bpmn/positions') {
+        if (req.url === '/__viso-api/bpmn/positions') {
           if (req.method === 'GET') {
             return serveFile(res, bpmnPositionsPath, {});
           }
@@ -105,8 +146,168 @@ export function datenVizPlugin(
           }
         }
 
+        // Raw BPMN source (for Code Panel)
+        if (req.url === '/__viso-api/bpmn/source') {
+          if (req.method === 'GET') {
+            return serveRaw(res, bpmnSchemaPath, '{}');
+          }
+          if (req.method === 'PUT') {
+            return writeValidatedRawBody(
+              req,
+              res,
+              bpmnSchemaPath,
+              ProcessSchema,
+              PROBLEM_BASE_BPMN
+            );
+          }
+        }
+
+        // === BPMN Mode sidecar (P1 two-mode prozess) ===
+        if (req.url === '/__viso-api/bpmn/mode') {
+          if (req.method === 'GET') {
+            try {
+              const sidecar = await loadModeSidecar(bpmnSchemaPath);
+              if (sidecar?.kind === 'bpmn') {
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ ok: true, mode: sidecar.mode, source: 'sidecar' }));
+                return;
+              }
+              // Heuristic-fallback for v1.0 files that never had a sidecar.
+              const raw = await readFile(bpmnSchemaPath, 'utf-8').catch(() => '{}');
+              const parsed = ProcessSchema.safeParse(JSON.parse(raw || '{}'));
+              const mode = parsed.success ? inferProcessMode(parsed.data) : 'simple';
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true, mode, source: 'heuristic' }));
+              return;
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+              return;
+            }
+          }
+          if (req.method === 'PUT') {
+            try {
+              const body = await readJsonBody(req);
+              // Zod-narrow the body rather than trusting a string union
+              // cast (kieran-review P1 N2). Rejects anything that isn't
+              // exactly { mode: 'simple' | 'bpmn' }.
+              const parsed = z
+                .object({ mode: z.enum(['simple', 'bpmn']) })
+                .safeParse(body);
+              if (!parsed.success) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ ok: false, error: 'Expected mode: simple | bpmn' }));
+                return;
+              }
+              await saveModeSidecar(bpmnSchemaPath, {
+                kind: 'bpmn',
+                mode: parsed.data.mode,
+                version: '1.1',
+              });
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true, mode: parsed.data.mode }));
+              return;
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+              return;
+            }
+          }
+        }
+
+        // === Landscape routes (P2) ===
+        if (req.url === '/__viso-api/landscape/schema' && req.method === 'GET') {
+          return serveFile(res, landscapeSchemaPath, {
+            format: 'viso-landscape-v1',
+            nodes: {},
+            relations: [],
+          });
+        }
+
+        if (req.url === '/__viso-api/landscape/positions') {
+          if (req.method === 'GET') {
+            return serveFile(res, landscapePositionsPath, {});
+          }
+          if (req.method === 'PUT') {
+            return writeJsonBody(req, res, landscapePositionsPath);
+          }
+        }
+
+        if (req.url === '/__viso-api/landscape/source') {
+          if (req.method === 'GET') {
+            return serveRaw(res, landscapeSchemaPath, '{}');
+          }
+          if (req.method === 'PUT') {
+            return writeValidatedRawBody(
+              req,
+              res,
+              landscapeSchemaPath,
+              LandscapeSchema,
+              PROBLEM_BASE_LANDSCAPE
+            );
+          }
+        }
+
+        if (req.url === '/__viso-api/landscape/mode') {
+          if (req.method === 'GET') {
+            try {
+              const sidecar = await loadModeSidecar(landscapeSchemaPath);
+              res.setHeader('Content-Type', 'application/json');
+              if (sidecar?.kind === 'landscape') {
+                res.end(JSON.stringify({ ok: true, mode: sidecar.mode, source: 'sidecar' }));
+              } else {
+                res.end(JSON.stringify({ ok: true, mode: 'l1', source: 'default' }));
+              }
+              return;
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+              return;
+            }
+          }
+          if (req.method === 'PUT') {
+            try {
+              const body = await readJsonBody(req);
+              const parsed = z.object({ mode: z.enum(['l1', 'l2']) }).safeParse(body);
+              if (!parsed.success) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ ok: false, error: 'Expected mode: l1 | l2' }));
+                return;
+              }
+              await saveModeSidecar(landscapeSchemaPath, {
+                kind: 'landscape',
+                mode: parsed.data.mode,
+                version: '1.1',
+              });
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true, mode: parsed.data.mode }));
+              return;
+            } catch (err) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+              return;
+            }
+          }
+        }
+
+        // Hidden-element IDs (for the "N BPMN-only elements are hidden" pill).
+        if (req.url === '/__viso-api/bpmn/hidden-elements' && req.method === 'GET') {
+          try {
+            const raw = await readFile(bpmnSchemaPath, 'utf-8').catch(() => '{}');
+            const parsed = ProcessSchema.safeParse(JSON.parse(raw || '{}'));
+            const hiddenIds = parsed.success ? bpmnOnlyNodeIds(parsed.data) : [];
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ ok: true, hiddenIds }));
+            return;
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+            return;
+          }
+        }
+
         // === Files listing ===
-        if (req.url === '/__daten-viz-api/files' && req.method === 'GET') {
+        if (req.url === '/__viso-api/files' && req.method === 'GET') {
           const files = [];
 
           // Check if ERD file exists
@@ -121,6 +322,18 @@ export function datenVizPlugin(
             await readFile(bpmnSchemaPath, 'utf-8');
             const name = bpmnSchemaPath.split('/').pop()?.replace('.bpmn.json', '') ?? 'process';
             files.push({ name: name + '.bpmn', path: bpmnSchemaPath.split('/').pop(), type: 'bpmn' });
+          } catch {}
+
+          // Check if landscape file exists (P2.1).
+          try {
+            await readFile(landscapeSchemaPath, 'utf-8');
+            const name =
+              landscapeSchemaPath.split('/').pop()?.replace('.landscape.json', '') ?? 'landscape';
+            files.push({
+              name: name + '.landscape',
+              path: landscapeSchemaPath.split('/').pop(),
+              type: 'landscape',
+            });
           } catch {}
 
           res.setHeader('Content-Type', 'application/json');
@@ -172,4 +385,41 @@ function writeJsonBody(
       res.end('Invalid JSON');
     }
   });
+}
+
+function readJsonBody(req: import('http').IncomingMessage): Promise<unknown> {
+  return new Promise((resolvePromise, reject) => {
+    let body = '';
+    req.on('data', (chunk: Buffer) => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        resolvePromise(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+async function serveRaw(
+  res: import('http').ServerResponse,
+  path: string,
+  fallback: string
+) {
+  try {
+    const data = await readFile(path, 'utf-8');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.end(data);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.end(fallback);
+    } else {
+      res.statusCode = 500;
+      res.end('Internal Server Error');
+    }
+  }
 }

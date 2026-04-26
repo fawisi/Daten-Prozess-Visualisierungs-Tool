@@ -1,0 +1,36 @@
+name: "viso-mcp-full-walkthrough"
+date: "2026-04-25"
+mode: "full"
+url: "http://localhost:5555 (vite preview)"
+target_app: "viso-mcp v1.1.0 — Agent-native MCP Diagram Editor"
+use_cases:
+  - erd: "DBML / ER-Diagramme (Datenbank-Schemas)"
+  - bpmn: "Prozess-Flows (BPMN)"
+  - landscape: "System-Landscape (C4-Modell, Datenlayout / Architektur)"
+test_dimensions:
+  - canvas_clicks: "Tool-Palette + Drag&Drop"
+  - shortcuts: "Cmd+K, Cmd+/, V, H, 1-4, Escape"
+  - command_palette: "Cmd+K → alle Aktionen"
+  - code_panel: "Cmd+/ → DBML/JSON Live-Edit"
+  - mcp_tools: "Code-Import via diagram_*, process_*, landscape_*, set_dbml/bpmn/landscape, parse_description, import_bundle"
+personas_count: 5
+status: "completed"
+phases:
+  discovery: completed
+  personas: completed
+  stories: completed
+  testing: completed
+  analysis: completed
+  report: completed
+started_at: "2026-04-25T09:00:00+02:00"
+completed_at: "2026-04-25T10:30:00+02:00"
+findings_total: 24
+findings_critical: 7
+findings_major: 13
+findings_minor: 4
+sus_mean: 23
+heuristic_mean: 1.94
+notes:
+  - "User-Vorgabe: maximal ausfuehrlich, viel Token, alle 3 Use Cases, klicks + shortcuts + code-import"
+  - "MCP-Tools sind in dieser Session live verfuegbar — werden direkt fuer Simulation genutzt"
+  - "Schwere Findings -> /workflows:plan -> /workflows:work am Ende"

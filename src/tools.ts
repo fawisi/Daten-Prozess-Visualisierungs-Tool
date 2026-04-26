@@ -1,9 +1,30 @@
 import { z } from 'zod';
+import { writeFile, rename } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { dirname, join } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { DiagramStore } from './store.js';
-import { SafeIdentifier, ColumnType, RelationType } from './schema.js';
+import {
+  SafeIdentifier,
+  ColumnType,
+  DiagramSchema,
+  NodeStatus,
+} from './schema.js';
+import { CardinalityInput, toLong } from './cardinality.js';
 import { toMermaid } from './export/mermaid.js';
+import { DbmlStore, diagramToDbml, rawDatabaseToDiagram } from './dbml-store.js';
+import { Parser, exporter } from '@dbml/core';
+import { derivePositionsPath, prunePositions } from './positions.js';
+import {
+  applyStatusSidecar,
+  loadErdStatusSidecar,
+  pruneErdStatusSidecar,
+  updateColumnStatus,
+  updateTableStatus,
+} from './erd-status-sidecar.js';
+import { parseDiagramDescription } from './parse-description.js';
+import { ParseDescriptionConfigSchema } from './narrative/config.js';
 import type { Diagram, Column } from './schema.js';
+import type { ErdStore } from './erd-store-interface.js';
 
 function schemaSummary(d: Diagram): string {
   const t = Object.keys(d.tables).length;
@@ -15,7 +36,57 @@ function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] };
 }
 
-export function registerTools(server: McpServer, store: DiagramStore) {
+function problemResult(body: Record<string, unknown>) {
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(body, null, 2),
+      },
+    ],
+  };
+}
+
+interface DbmlDiag {
+  message?: string;
+  code?: number | string;
+  start?: { line: number; column: number };
+  end?: { line: number; column: number };
+}
+
+function extractDbmlDiagnostics(err: unknown): DbmlDiag[] {
+  const diags = (err as { diags?: unknown[] })?.diags;
+  if (!Array.isArray(diags)) return [];
+  return diags.map((d) => {
+    const diag = d as Record<string, unknown>;
+    return {
+      message: (diag.message as string | undefined) ?? (diag.msg as string | undefined),
+      code: diag.code as number | string | undefined,
+      start: diag.start as DbmlDiag['start'],
+      end: diag.end as DbmlDiag['end'],
+    };
+  });
+}
+
+function reconstructDiagramOrNull(rawDatabase: unknown): Diagram | null {
+  try {
+    const diagram = rawDatabaseToDiagram(
+      rawDatabase as Parameters<typeof rawDatabaseToDiagram>[0]
+    );
+    const check = DiagramSchema.safeParse(diagram);
+    return check.success ? check.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function registerTools(server: McpServer, initialStore: ErdStore) {
+  // store is mutable so set_dbml can swap a legacy JSON-backed DiagramStore
+  // for a fresh DbmlStore after auto-migration (CR-6). Subsequent tool
+  // invocations resolve through this binding so they stay coherent with
+  // the new backing file.
+  let store: ErdStore = initialStore;
   // --- diagram_create_table ---
   server.registerTool(
     'diagram_create_table',
@@ -89,7 +160,8 @@ export function registerTools(server: McpServer, store: DiagramStore) {
   server.registerTool(
     'diagram_add_column',
     {
-      description: 'Add a column to an existing table',
+      description:
+        'Add a column to an existing table. For > 3 mutations in a single turn prefer `set_dbml`.',
       inputSchema: z.object({
         table: SafeIdentifier.describe('Table to add the column to'),
         column: z.object({
@@ -166,16 +238,20 @@ export function registerTools(server: McpServer, store: DiagramStore) {
   server.registerTool(
     'diagram_add_relation',
     {
-      description: 'Add a foreign key relation between two tables',
+      description:
+        'Add a foreign key relation between two tables. Cardinality accepts both long form (one-to-many) and short form (1:N). For > 3 mutations in a single turn prefer `set_dbml`.',
       inputSchema: z.object({
         fromTable: SafeIdentifier.describe('Source table'),
         fromColumn: SafeIdentifier.describe('Source column (FK)'),
         toTable: SafeIdentifier.describe('Target table'),
         toColumn: SafeIdentifier.describe('Target column (usually PK)'),
-        type: RelationType.describe('Relation cardinality'),
+        type: CardinalityInput.describe(
+          'Relation cardinality. Accepts long form (one-to-one|one-to-many|many-to-one|many-to-many) OR short form (1:1|1:N|N:1|N:N) — MA-3.'
+        ),
       }),
     },
     async ({ fromTable, fromColumn, toTable, toColumn, type }) => {
+      const cardinality = toLong(type);
       const diagram = await store.load();
 
       // Validate tables exist
@@ -221,11 +297,11 @@ export function registerTools(server: McpServer, store: DiagramStore) {
       diagram.relations.push({
         from: { table: fromTable, column: fromColumn },
         to: { table: toTable, column: toColumn },
-        type,
+        type: cardinality,
       });
       await store.save(diagram);
       return textResult(
-        `Added ${type} relation from "${fromTable}.${fromColumn}" to "${toTable}.${toColumn}". ${schemaSummary(diagram)}`
+        `Added ${cardinality} relation from "${fromTable}.${fromColumn}" to "${toTable}.${toColumn}". ${schemaSummary(diagram)}`
       );
     }
   );
@@ -263,7 +339,8 @@ export function registerTools(server: McpServer, store: DiagramStore) {
   server.registerTool(
     'diagram_get_schema',
     {
-      description: 'Read the current ER diagram schema as compact JSON',
+      description:
+        'Read the current ER diagram schema as compact JSON. Hydrates status fields from the .erd.status.json sidecar (DBML has no native status support).',
       inputSchema: z.object({}),
       annotations: {
         readOnlyHint: true,
@@ -271,6 +348,8 @@ export function registerTools(server: McpServer, store: DiagramStore) {
     },
     async () => {
       const diagram = await store.load();
+      const statusSidecar = await loadErdStatusSidecar(store.filePath);
+      applyStatusSidecar(diagram, statusSidecar);
       return textResult(JSON.stringify(diagram, null, 2));
     }
   );
@@ -291,7 +370,307 @@ export function registerTools(server: McpServer, store: DiagramStore) {
       if (Object.keys(diagram.tables).length === 0) {
         return textResult('Schema is empty. Create tables first.');
       }
+      const statusSidecar = await loadErdStatusSidecar(store.filePath);
+      applyStatusSidecar(diagram, statusSidecar);
       return textResult(toMermaid(diagram));
+    }
+  );
+
+  // --- set_dbml ---
+  server.registerTool(
+    'set_dbml',
+    {
+      description:
+        'Replace the entire ERD with new DBML text in one call. Atomic — the file stays unchanged on parse error. Orphan positions (tables that no longer exist) are pruned from the sidecar. For > 3 mutations prefer this over atomic add/remove tools.',
+      inputSchema: z.object({
+        dbml: z
+          .string()
+          .min(1, 'DBML text cannot be empty')
+          .describe('Complete DBML schema as a single string'),
+      }),
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: true,
+      },
+    },
+    async ({ dbml }) => {
+      // Auto-migrate a legacy JSON-backed store on first set_dbml call so
+      // agents and the README quickstart converge on the same canonical
+      // .dbml format without forcing a manual `npx viso-mcp migrate`
+      // step (CR-6). On success the in-process store reference is swapped
+      // to a DbmlStore pointing at the freshly written .dbml file.
+      let migrationInfo: {
+        migrated: boolean;
+        oldPath?: string;
+        newPath?: string;
+      } = { migrated: false };
+      if (!(store instanceof DbmlStore)) {
+        try {
+          const { migrateFile } = await import('./migrate-cli.js');
+          const result = await migrateFile(store.filePath);
+          store = new DbmlStore(result.dbmlPath);
+          migrationInfo = {
+            migrated: true,
+            oldPath: result.sourcePath,
+            newPath: result.dbmlPath,
+          };
+        } catch (err) {
+          return problemResult({
+            type: 'https://viso-mcp.dev/problems/migration-failed',
+            title: 'Auto-migration to DBML failed',
+            detail: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      let parsedRaw: unknown;
+      try {
+        parsedRaw = Parser.parseDBMLToJSONv2(dbml);
+      } catch (err) {
+        return problemResult({
+          type: 'https://viso-mcp.dev/problems/dbml-parse-error',
+          title: 'DBML parse error',
+          detail:
+            (err as Error).message ||
+            'DBML compiler reported one or more diagnostics — see errors[].',
+          errors: extractDbmlDiagnostics(err),
+        });
+      }
+
+      // Reload via DbmlStore.load() after the write would be the cleanest
+      // validator, but that would persist invalid state on failure. Instead
+      // we run the same rawDatabase -> Diagram mapping against an in-memory
+      // write by delegating to a DbmlStore with the path we are about to
+      // write to — the actual filesystem write only happens once we know
+      // validation passed.
+      const tmpDiagram = reconstructDiagramOrNull(parsedRaw);
+      if (!tmpDiagram) {
+        return problemResult({
+          type: 'https://viso-mcp.dev/problems/dbml-schema-invalid',
+          title: 'DBML parsed but failed internal schema validation',
+          detail:
+            'Reserved identifier or unsupported table/column shape. Check that table and column names match /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/.',
+        });
+      }
+
+      // Atomic write: tmp file + rename. Preserves the original DBML text
+      // so features our internal Diagram cannot represent (indexes, enums,
+      // TableGroups) survive round-trips through set_dbml.
+      const dir = dirname(store.filePath);
+      const tmp = join(dir, `.tmp-${randomUUID()}.dbml`);
+      await writeFile(tmp, dbml.endsWith('\n') ? dbml : dbml + '\n', 'utf-8');
+      await rename(tmp, store.filePath);
+
+      // Prune orphan positions
+      const validTableIds = new Set(Object.keys(tmpDiagram.tables));
+      const prunedIds = await prunePositions(
+        derivePositionsPath(store.filePath),
+        validTableIds
+      );
+
+      // Prune status sidecar entries for tables/columns that no longer exist.
+      const prunedStatuses = await pruneErdStatusSidecar(store.filePath, tmpDiagram);
+
+      return textResult(
+        JSON.stringify(
+          {
+            ok: true,
+            tableCount: Object.keys(tmpDiagram.tables).length,
+            relationCount: tmpDiagram.relations.length,
+            prunedPositions: prunedIds,
+            prunedStatuses,
+            ...(migrationInfo.migrated ? migrationInfo : {}),
+          },
+          null,
+          2
+        )
+      );
+    }
+  );
+
+  // --- diagram_export_sql ---
+  server.registerTool(
+    'diagram_export_sql',
+    {
+      description:
+        'Export the current ER diagram as SQL DDL for postgres or mysql (mssql/oracle/snowflake ship in v1.1)',
+      inputSchema: z.object({
+        dialect: z.enum(['postgres', 'mysql']).describe('SQL dialect'),
+      }),
+      annotations: {
+        readOnlyHint: true,
+      },
+    },
+    async ({ dialect }) => {
+      const diagram = await store.load();
+      if (Object.keys(diagram.tables).length === 0) {
+        return textResult('Schema is empty. Create tables first.');
+      }
+      const dbml = diagramToDbml(diagram);
+      try {
+        const sql = exporter.export(dbml, dialect);
+        return textResult(sql);
+      } catch (err) {
+        return textResult(
+          `SQL export failed for dialect ${dialect}: ${(err as Error).message}`
+        );
+      }
+    }
+  );
+
+  // --- diagram_set_table_status ---
+  server.registerTool(
+    'diagram_set_table_status',
+    {
+      description:
+        'Set the audit status of a table. Surfaced in the PropertiesPanel badge and the Mermaid export comment block. Pass status=null to clear.',
+      inputSchema: z.object({
+        name: SafeIdentifier.describe('Table name'),
+        status: NodeStatus.nullable().describe(
+          "Status: 'open' (pending), 'done' (verified), 'blocked' (issue). null clears."
+        ),
+      }),
+      annotations: {
+        idempotentHint: true,
+      },
+    },
+    async ({ name, status }) => {
+      const diagram = await store.load();
+      if (!diagram.tables[name]) {
+        const available = Object.keys(diagram.tables).join(', ') || '(none)';
+        return textResult(
+          `Table "${name}" not found. Available tables: ${available}.`
+        );
+      }
+      // Status is persisted in the .erd.status.json sidecar, not in DBML,
+      // because DBML has no native status annotation. See erd-status-sidecar.ts.
+      await updateTableStatus(store.filePath, name, status);
+      return textResult(
+        status === null
+          ? `Cleared status on table "${name}".`
+          : `Set status of table "${name}" to "${status}".`
+      );
+    }
+  );
+
+  // --- diagram_set_column_status ---
+  server.registerTool(
+    'diagram_set_column_status',
+    {
+      description:
+        'Set the audit status of a specific column. Use for fine-grained PII / compliance-review tracking. Pass status=null to clear.',
+      inputSchema: z.object({
+        table: SafeIdentifier.describe('Table containing the column'),
+        columnName: SafeIdentifier.describe('Column name'),
+        status: NodeStatus.nullable().describe(
+          "Status: 'open' (pending), 'done' (verified), 'blocked' (issue). null clears."
+        ),
+      }),
+      annotations: {
+        idempotentHint: true,
+      },
+    },
+    async ({ table, columnName, status }) => {
+      const diagram = await store.load();
+      const t = diagram.tables[table];
+      if (!t) {
+        const available = Object.keys(diagram.tables).join(', ') || '(none)';
+        return textResult(
+          `Table "${table}" not found. Available tables: ${available}.`
+        );
+      }
+      if (!t.columns.some((c) => c.name === columnName)) {
+        const available = t.columns.map((c) => c.name).join(', ');
+        return textResult(
+          `Column "${columnName}" not found in table "${table}". Available: ${available}.`
+        );
+      }
+      await updateColumnStatus(store.filePath, table, columnName, status);
+      return textResult(
+        status === null
+          ? `Cleared status on "${table}.${columnName}".`
+          : `Set status of "${table}.${columnName}" to "${status}".`
+      );
+    }
+  );
+
+  // --- diagram_parse_description ---
+  server.registerTool(
+    'diagram_parse_description',
+    {
+      description:
+        "Parse narrative text into ERD tables + columns. Flagship pattern: 'Tabelle users hat id, email, name'. Optional column-type via 'als': 'Tabelle orders hat id als uuid, total als numeric'. Engine=llm degrades to regex with warning. `persist: false` previews without writing.",
+      inputSchema: z.object({
+        text: z.string().min(1).max(20000),
+        config: ParseDescriptionConfigSchema.optional(),
+        persist: z.boolean().default(true),
+      }),
+      annotations: { idempotentHint: true },
+    },
+    async ({ text, config, persist }) => {
+      const base = await store.load();
+      const result = parseDiagramDescription(text, config, base);
+      // MA-7: when the parser recognised nothing new, skip the disk write
+      // entirely. `noOp: true` lets agents detect "your input did not move
+      // the schema" without a load-and-diff in the next turn.
+      const noOp =
+        result.stats.tablesAdded === 0 &&
+        result.stats.columnsAdded === 0 &&
+        result.stats.relationsAdded === 0;
+      const persisted = persist && !noOp;
+      if (persisted) await store.save(result.diagram);
+      return textResult(
+        JSON.stringify(
+          {
+            ok: true,
+            engineUsed: result.engineUsed,
+            stats: result.stats,
+            warnings: result.warnings,
+            unparsedSpans: result.unparsedSpans,
+            persisted,
+            noOp,
+            tableCount: Object.keys(result.diagram.tables).length,
+          },
+          null,
+          2
+        )
+      );
+    }
+  );
+
+  // --- diagram_update_table ---
+  server.registerTool(
+    'diagram_update_table',
+    {
+      description:
+        'Update mutable fields on a table (description). Omitted fields are left unchanged; description="" clears it.',
+      inputSchema: z.object({
+        name: SafeIdentifier.describe('Table name'),
+        description: z
+          .string()
+          .max(512)
+          .optional()
+          .describe('New description; empty string clears it'),
+      }),
+      annotations: {
+        idempotentHint: true,
+      },
+    },
+    async ({ name, description }) => {
+      const diagram = await store.load();
+      const table = diagram.tables[name];
+      if (!table) {
+        const available = Object.keys(diagram.tables).join(', ') || '(none)';
+        return textResult(
+          `Table "${name}" not found. Available tables: ${available}.`
+        );
+      }
+      if (description !== undefined) {
+        if (description === '') delete table.description;
+        else table.description = description;
+      }
+      await store.save(diagram);
+      return textResult(`Updated table "${name}".`);
     }
   );
 }

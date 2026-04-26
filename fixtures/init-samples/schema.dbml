@@ -1,0 +1,36 @@
+// viso-mcp init --with-samples — minimal e-commerce demo for first-run.
+// Open in the editor with `npx viso-mcp serve`.
+
+Table customers {
+  id uuid [pk]
+  email varchar(255) [not null, note: 'Login email, unique']
+  name varchar(128) [not null]
+  created_at timestamp [not null]
+}
+
+Table products {
+  id uuid [pk]
+  name varchar(256) [not null]
+  price_cents integer [not null, note: 'Stored in minor units']
+  sku varchar(64) [not null]
+}
+
+Table orders {
+  id uuid [pk]
+  customer_id uuid [not null]
+  status varchar(32) [not null, note: 'pending | paid | shipped | cancelled']
+  total_cents integer [not null]
+  created_at timestamp [not null]
+}
+
+Table order_items {
+  id uuid [pk]
+  order_id uuid [not null]
+  product_id uuid [not null]
+  quantity integer [not null]
+  unit_price_cents integer [not null]
+}
+
+Ref: orders.customer_id > customers.id
+Ref: order_items.order_id > orders.id
+Ref: order_items.product_id > products.id

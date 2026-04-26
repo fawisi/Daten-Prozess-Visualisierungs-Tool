@@ -1,0 +1,19 @@
+Table order_items {
+  order_id uuid [pk, not null]
+  product_id uuid [pk, not null]
+  quantity integer [not null]
+  unit_price decimal
+}
+
+Table orders {
+  id uuid [pk]
+  customer_id uuid [not null]
+}
+
+Table products {
+  id uuid [pk]
+  sku varchar(64) [not null]
+}
+
+Ref: order_items.order_id > orders.id
+Ref: order_items.product_id > products.id

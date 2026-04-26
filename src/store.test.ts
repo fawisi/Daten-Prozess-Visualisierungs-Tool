@@ -10,7 +10,7 @@ import { writeFile } from 'node:fs/promises';
 let tempDir: string;
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'daten-viz-test-'));
+  tempDir = await mkdtemp(join(tmpdir(), 'viso-test-'));
 });
 
 afterEach(async () => {

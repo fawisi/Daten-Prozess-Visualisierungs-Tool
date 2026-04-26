@@ -1,0 +1,111 @@
+name: "viso-mcp-v1-1-2-re-test"
+date: "2026-04-26"
+mode: "concept-eval-heuristic-rescore"
+target_app: "viso-mcp v1.1.2 — Agent-native MCP Diagram Editor"
+baseline_test: "2026-04-25-viso-mcp-full-walkthrough"
+baseline_version: "v1.1.0"
+baseline_sus: 23
+baseline_heuristic_mean: 1.94
+baseline_findings:
+  total: 24
+  critical: 7
+  major: 13
+  minor: 4
+
+releases_under_test:
+  v1_1_1:
+    date: "2026-04-25"
+    closed:
+      - CR-1
+      - CR-2
+      - CR-3
+      - CR-4
+      - CR-5
+      - CR-6
+      - CR-7
+      - MA-1
+      - MA-3
+      - MA-4
+      - MA-7
+      - MA-12
+      - MI-1
+  v1_1_2:
+    date: "2026-04-26"
+    closed:
+      - MA-2
+      - MA-5
+      - MA-6
+      - MA-8
+      - MA-9
+      - MA-10
+      - MA-11
+      - MI-2
+      - MI-4
+
+closed_total: 22
+remaining_total: 2
+
+use_cases:
+  - erd: "DBML / ER-Diagramme (Datenbank-Schemas)"
+  - bpmn: "Prozess-Flows (BPMN)"
+  - landscape: "System-Landscape (C4-Modell)"
+
+methodology:
+  type: "synthetic-concept-evaluation"
+  rationale: "Browser-MCP-Tools für ReactFlow-Selection limitiert (siehe v1.1.0 'What didn't work'). Heuristisches Re-Scoring auf Basis Code-Inspektion + CHANGELOG-Verifikation + Mapping-Tabelle."
+  evaluation_artifacts:
+    - "CHANGELOG.md v1.1.1 + v1.1.2 Blocks"
+    - "git log chore/v1.1.1-release..HEAD --oneline (9 Commits)"
+    - "Source-Tree Inspection: src/preview/components/, src/narrative/, src/preview/vite-plugin.ts, src/preview/vite-validation.ts, src/cardinality.ts, src/preview/components/shell/export-options.ts"
+
+personas_count: 5
+personas:
+  - id: persona-1
+    name: "Dr. Anika Reuter"
+    archetype: "Tech-affiner Berater (TAFKA-Sparring)"
+    role: "KI-Auditor / Senior Berater"
+  - id: persona-2
+    name: "Tobias Wagner"
+    archetype: "BPMN-Anfänger"
+    role: "Prozess-Manager Mittelstand"
+  - id: persona-3
+    name: "Lina Holzer"
+    archetype: "Daten-Analyst"
+    role: "BI-Analystin / DBML-User"
+  - id: persona-4
+    name: "Christoph Naumann"
+    archetype: "Workshop-Moderator"
+    role: "Berater Live-Workshop"
+  - id: persona-5
+    name: "Frau Dr. Inga Vollrath"
+    archetype: "Auditor (ISO 27001)"
+    role: "Compliance / IT-GRC"
+
+stories_count: 12
+
+target_metrics:
+  sus_target: ">= 65"
+  sus_estimate_range: [67, 72]
+  heuristic_mean_target: ">= 3.5"
+  heuristic_mean_estimate_range: [3.8, 4.0]
+  remaining_critical_max: 0
+  remaining_major_max: 1
+  remaining_minor_max: 2
+
+status: completed
+phases:
+  discovery: completed
+  personas: completed
+  stories: completed
+  testing: completed
+  analysis: completed
+  report: completed
+
+started_at: "2026-04-26T09:00:00+02:00"
+completed_at: "2026-04-26T11:30:00+02:00"
+
+notes:
+  - "Synthetisches Re-Test, Concept-Mode + Heuristic-Rescore — kein Real-Browser-Run."
+  - "Calibration-Error per 'Lost in Simulation' arXiv 2026: bis ±15%. Findings sind Code-Inspektion-basiert."
+  - "Empfehlung: Real-User-Validation mit 3-5 echten Beratern (TAFKA-KMU-Profil) in Q3 2026."
+  - "v1.1.2-Branch: fix/v1.1.2-major-sweep, 9 Commits, alle 22/24 Findings reduziert auf 2 verbleibende."
