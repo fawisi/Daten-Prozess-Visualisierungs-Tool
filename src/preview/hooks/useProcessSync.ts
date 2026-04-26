@@ -6,6 +6,7 @@ import type { ConnectionStatus } from '../components/shared/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
 import { useApiConfig } from '../state/ApiConfig.js';
 import { authInit, resolveWsUrl } from '../state/apiHelpers.js';
+import { isInitialAutoLayoutNeeded } from './auto-layout.js';
 
 const DEFAULT_WS_PATH = '/__viso-ws';
 const RECONNECT_INTERVAL = 2000;
@@ -52,6 +53,31 @@ export function useProcessSync() {
   const positionsRef = useRef<ProcessPositions>({});
   const writeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  // MA-9: one-shot guard for the initial-layout persist.
+  const autoLayoutDoneRef = useRef(false);
+
+  // Debounced position writer
+  const savePositions = useCallback((updatedNodes: Node[]) => {
+    const positions: ProcessPositions = {};
+    for (const node of updatedNodes) {
+      positions[node.id] = { x: node.position.x, y: node.position.y };
+    }
+    positionsRef.current = positions;
+
+    if (writeTimeoutRef.current) {
+      clearTimeout(writeTimeoutRef.current);
+    }
+    writeTimeoutRef.current = setTimeout(() => {
+      fetch(api.endpoints.bpmnPositions, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
+        },
+        body: JSON.stringify(positions),
+      }).catch((err) => console.error('Failed to save BPMN positions:', err));
+    }, POSITION_WRITE_DEBOUNCE);
+  }, [api]);
 
   const loadSchema = useCallback(async () => {
     try {
@@ -78,10 +104,18 @@ export function useProcessSync() {
       const laidOut = await computeLayout(rawNodes, rawEdges, positions);
       setNodes(laidOut);
       setEdges(rawEdges);
+
+      if (
+        !autoLayoutDoneRef.current &&
+        isInitialAutoLayoutNeeded(positions, laidOut.length)
+      ) {
+        autoLayoutDoneRef.current = true;
+        savePositions(laidOut);
+      }
     } catch (err) {
       console.error('Failed to load BPMN schema:', err);
     }
-  }, [api]);
+  }, [api, savePositions]);
 
   // WebSocket connection
   useEffect(() => {
@@ -130,29 +164,6 @@ export function useProcessSync() {
       wsRef.current?.close();
     };
   }, [loadSchema, api]);
-
-  // Debounced position writer
-  const savePositions = useCallback((updatedNodes: Node[]) => {
-    const positions: ProcessPositions = {};
-    for (const node of updatedNodes) {
-      positions[node.id] = { x: node.position.x, y: node.position.y };
-    }
-    positionsRef.current = positions;
-
-    if (writeTimeoutRef.current) {
-      clearTimeout(writeTimeoutRef.current);
-    }
-    writeTimeoutRef.current = setTimeout(() => {
-      fetch(api.endpoints.bpmnPositions, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
-        },
-        body: JSON.stringify(positions),
-      }).catch((err) => console.error('Failed to save BPMN positions:', err));
-    }, POSITION_WRITE_DEBOUNCE);
-  }, [api]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {

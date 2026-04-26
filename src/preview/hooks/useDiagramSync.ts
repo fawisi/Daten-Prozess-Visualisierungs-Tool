@@ -6,6 +6,7 @@ import type { ConnectionStatus } from '../components/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
 import { useApiConfig } from '../state/ApiConfig.js';
 import { authInit, resolveWsUrl } from '../state/apiHelpers.js';
+import { isInitialAutoLayoutNeeded } from './auto-layout.js';
 
 const DEFAULT_WS_PATH = '/__viso-ws';
 const RECONNECT_INTERVAL = 2000;
@@ -46,6 +47,32 @@ export function useDiagramSync() {
   const positionsRef = useRef<Positions>({});
   const writeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  // MA-9: one-shot guard so the initial ELK layout is persisted exactly
+  // once per hook lifecycle, even when the WebSocket reconnects.
+  const autoLayoutDoneRef = useRef(false);
+
+  // Debounced position writer
+  const savePositions = useCallback((updatedNodes: Node[]) => {
+    const positions: Positions = {};
+    for (const node of updatedNodes) {
+      positions[node.id] = { x: node.position.x, y: node.position.y };
+    }
+    positionsRef.current = positions;
+
+    if (writeTimeoutRef.current) {
+      clearTimeout(writeTimeoutRef.current);
+    }
+    writeTimeoutRef.current = setTimeout(() => {
+      fetch(api.endpoints.erdPositions, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
+        },
+        body: JSON.stringify(positions),
+      }).catch((err) => console.error('Failed to save positions:', err));
+    }, POSITION_WRITE_DEBOUNCE);
+  }, [api]);
 
   const loadSchema = useCallback(async () => {
     try {
@@ -72,10 +99,21 @@ export function useDiagramSync() {
       const laidOut = await computeLayout(rawNodes, rawEdges, positions);
       setNodes(laidOut);
       setEdges(rawEdges);
+
+      // MA-9: persist the initial ELK arrangement exactly once when no
+      // sidecar exists yet — pinning the layout so subsequent reloads
+      // don't reshuffle it after a single drag.
+      if (
+        !autoLayoutDoneRef.current &&
+        isInitialAutoLayoutNeeded(positions, laidOut.length)
+      ) {
+        autoLayoutDoneRef.current = true;
+        savePositions(laidOut);
+      }
     } catch (err) {
       console.error('Failed to load schema:', err);
     }
-  }, [api]);
+  }, [api, savePositions]);
 
   // WebSocket connection
   useEffect(() => {
@@ -124,29 +162,6 @@ export function useDiagramSync() {
       wsRef.current?.close();
     };
   }, [loadSchema, api]);
-
-  // Debounced position writer
-  const savePositions = useCallback((updatedNodes: Node[]) => {
-    const positions: Positions = {};
-    for (const node of updatedNodes) {
-      positions[node.id] = { x: node.position.x, y: node.position.y };
-    }
-    positionsRef.current = positions;
-
-    if (writeTimeoutRef.current) {
-      clearTimeout(writeTimeoutRef.current);
-    }
-    writeTimeoutRef.current = setTimeout(() => {
-      fetch(api.endpoints.erdPositions, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
-        },
-        body: JSON.stringify(positions),
-      }).catch((err) => console.error('Failed to save positions:', err));
-    }, POSITION_WRITE_DEBOUNCE);
-  }, [api]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
