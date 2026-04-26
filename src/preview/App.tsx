@@ -44,6 +44,9 @@ import { useTheme } from '@/state/useTheme.js';
 import { renderDiagramPng, renderDiagramSvg } from '@/export/render-diagram.js';
 import { buildBrowserBundle } from '@/export/bundle-browser.js';
 import { ProcessSchema, type Process } from '../bpmn/schema.js';
+import { DiagramSchema } from '../schema.js';
+import { LandscapeSchema } from '../landscape/schema.js';
+import { applyErdTableUpdate, applyLandscapeNodeUpdate } from './node-update.js';
 
 // Stable references
 const erdNodeTypes = { table: TableNode };
@@ -744,10 +747,45 @@ function EditorShell({
   const handleUpdateNode = useCallback(
     async (id: string, update: NodeUpdate) => {
       if (readOnly) return;
-      if (!activeFile || activeFile.type !== 'bpmn') {
-        // ERD node edits land in a later phase (needs DBML mutation semantics).
+      if (!activeFile) return;
+
+      // ===== ERD (MA-2 — v1.1.2) =====
+      if (activeFile.type === 'erd') {
+        const handles = canvasRef.current;
+        if (!handles) return;
+        const raw = await handles.refreshSource();
+        let parsedDoc: unknown;
+        try {
+          parsedDoc = JSON.parse(raw);
+        } catch {
+          return;
+        }
+        const validated = DiagramSchema.safeParse(parsedDoc);
+        if (!validated.success) return;
+        applyErdTableUpdate(validated.data, id, update);
+        await handles.putSource(JSON.stringify(validated.data, null, 2));
         return;
       }
+
+      // ===== Landscape (MA-2 extension — v1.1.2) =====
+      if (activeFile.type === 'landscape') {
+        const handles = canvasRef.current;
+        if (!handles) return;
+        const raw = await handles.refreshSource();
+        let parsedDoc: unknown;
+        try {
+          parsedDoc = JSON.parse(raw);
+        } catch {
+          return;
+        }
+        const validated = LandscapeSchema.safeParse(parsedDoc);
+        if (!validated.success) return;
+        applyLandscapeNodeUpdate(validated.data, id, update);
+        await handles.putSource(JSON.stringify(validated.data, null, 2));
+        return;
+      }
+
+      if (activeFile.type !== 'bpmn') return;
       const bpmnPutUrl = api.endpoints.bpmnPut;
       if (!bpmnPutUrl) {
         // Preview (Vite) mode — fall back to /bpmn/source round-trip via
