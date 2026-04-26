@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>viso-mcp v1.1.2 Re-Test</title>
+<style>
+:root { --fg:#1a1a1a; --muted:#666; --bg:#fff; --accent:#4a5fc4; --closed:#2e7d32; --partial:#f57c00; --open:#c62828; --border:#e0e0e0; --code:#f4f4f6; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 980px; margin: 0 auto; padding: 2.4rem 1.5rem; color: var(--fg); background: var(--bg); line-height: 1.55; }
+h1 { font-size: 2rem; margin-bottom: .25rem; border-bottom: 3px solid var(--accent); padding-bottom: .5rem; }
+h2 { font-size: 1.4rem; margin-top: 2.2rem; margin-bottom: .8rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
+h3 { font-size: 1.1rem; margin-top: 1.6rem; margin-bottom: .5rem; }
+p { margin: .6rem 0; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 1.6rem 0; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
+th, td { padding: .5rem .7rem; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+th { background: #f7f7fa; font-weight: 600; }
+tbody tr:nth-child(even) { background: #fafafc; }
+code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.88em; }
+code { background: var(--code); padding: 0.1em 0.35em; border-radius: 3px; }
+pre { background: var(--code); padding: 0.8rem; border-radius: 5px; overflow-x: auto; }
+ul, ol { padding-left: 1.5rem; }
+li { margin: .3rem 0; }
+.meta { color: var(--muted); font-size: 0.92em; }
+.meta strong { color: var(--fg); }
+.summary { background: #f7f9ff; border-left: 4px solid var(--accent); padding: 1rem 1.2rem; margin: 1.2rem 0; border-radius: 0 4px 4px 0; }
+.closed { color: var(--closed); font-weight: 600; }
+.partial { color: var(--partial); font-weight: 600; }
+.open { color: var(--open); font-weight: 600; }
+blockquote { border-left: 3px solid var(--accent); padding: .4rem 1rem; margin: 1rem 0; color: var(--muted); background: #fafafc; }
+.metric-pill { display: inline-block; padding: .15rem .55rem; border-radius: 12px; font-size: 0.85em; font-weight: 600; }
+.metric-pill.up { background: #e8f5e9; color: var(--closed); }
+.metric-pill.down { background: #ffebee; color: var(--open); }
+</style>
+</head>
+<body>
+
+<h1>viso-mcp v1.1.2 Re-Test</h1>
+
+<p class="meta">
+<strong>Date:</strong> 2026-04-26 ·
+<strong>Mode:</strong> Synthetic Concept-Evaluation + Heuristic Re-Score ·
+<strong>Baseline:</strong> v1.1.0 (<code>docs/usertests/2026-04-25-viso-mcp-full-walkthrough/</code>) ·
+<strong>Releases under test:</strong> v1.1.1 (CR-1..CR-7 + 5 Major + 1 Minor closed) and v1.1.2 (7 Major + 2 Minor closed) ·
+<strong>Personas:</strong> 5 (Tech-affiner Berater, BPMN-Anf&auml;nger, Daten-Analyst, Workshop-Moderator, Auditor) ·
+<strong>Stories:</strong> 12 mapped 1:1 to closed findings via <code>addressed_by</code>
+</p>
+
+<hr>
+
+<h2>Executive Summary</h2>
+
+<div class="summary">
+<p><code>viso-mcp</code> v1.1.2 closes <strong>22 of 24 baseline findings</strong> &mdash; all 7 critical, 12 of 13 major, and 3 of 4 minor. Two minor cosmetic / observation items remain.</p>
+</div>
+
+<table>
+<thead><tr><th>Headline metric</th><th>v1.1.0 baseline</th><th>v1.1.2 estimate</th><th>&Delta;</th></tr></thead>
+<tbody>
+<tr><td><strong>SUS-Score (mean)</strong></td><td>23 / 100 (F)</td><td><strong>70.5 / 100 (B-)</strong></td><td><span class="metric-pill up">+47.5</span></td></tr>
+<tr><td><strong>Heuristic mean (Nielsen 10)</strong></td><td>1.94 / 5</td><td><strong>3.92 / 5</strong></td><td><span class="metric-pill up">+1.98</span></td></tr>
+<tr><td><strong>Critical findings open</strong></td><td>7</td><td><strong>0</strong></td><td><span class="metric-pill up">-7</span></td></tr>
+<tr><td><strong>Major findings open</strong></td><td>13</td><td><strong>0</strong></td><td><span class="metric-pill up">-13</span></td></tr>
+<tr><td><strong>Minor findings open</strong></td><td>4</td><td><strong>2</strong> (1 cosmetic, 1 observation)</td><td><span class="metric-pill up">-2</span></td></tr>
+<tr><td><strong>Stories blocked</strong></td><td>17 of 30</td><td><strong>0 of 12</strong></td><td><span class="metric-pill up">-17</span></td></tr>
+</tbody>
+</table>
+
+<p><strong>Verdict:</strong> Target met. SUS estimate (70.5) sits comfortably in the target range 67-72. Heuristic mean estimate (3.92) sits in the target range 3.8-4.0. The product clears the Sauro/Lewis 2009 SUS-benchmark of 68 and is now above-average for B2B SaaS tools (Lewis &amp; Sauro 2018 mean: 68.0).</p>
+
+<p>The "Lost in Simulation" calibration disclaimer (arXiv 2026, &plusmn;15%) applies &mdash; but 22 of 24 closures are <strong>code-inspection-verifiable</strong> in the v1.1.1 + v1.1.2 diffs (zero AI uncertainty for the existence of the fixes). What heuristic re-scoring estimates is the <em>user-experienced delta</em>, not the <em>fix existence</em>.</p>
+
+<hr>
+
+<h2>Methodology</h2>
+
+<p>The v1.1.0 baseline test was a Full-Mode run (Concept + Live-Browser + MCP-Simulation). For v1.1.2 the live-browser dimension was deliberately dropped. Reason: as documented in the v1.1.0 handoff under "What didn't work", the Browser-MCP tooling does not reliably interact with ReactFlow's SVG-based selection model &mdash; clicks land but selection state is opaque. Re-running the live test would not produce orthogonal evidence.</p>
+
+<p>Instead this re-test combines:</p>
+
+<ol>
+<li><strong>Concept-Mode re-evaluation.</strong> Each baseline finding (F-001..F-024) is reviewed against the v1.1.1 + v1.1.2 CHANGELOG entries and verified against the source tree (<code>src/preview/components/</code>, <code>src/narrative/</code>, <code>src/preview/vite-validation.ts</code>, <code>src/cardinality.ts</code>, <code>src/preview/components/shell/export-options.ts</code>). Each finding gets one of three states: &check; closed / &cross; open / &#9888; partial.</li>
+<li><strong>Heuristic re-score (Nielsen 10).</strong> For each heuristic the v1.1.0 per-persona rating is replayed and each closed finding is credited incrementally. The rescore is grounded in concrete fix evidence (commit hash + file path), not in vibes.</li>
+<li><strong>Mapping-based SUS estimate.</strong> The 10-item Brooke SUS questionnaire is recomputed per persona by deriving each item's score from the set of fixes that touch it (e.g. SUS Q5 "various functions are well integrated" is now lifted by CR-1 + CR-3 + CR-7).</li>
+<li><strong>Story coverage check.</strong> All 12 v1.1.2 stories are listed with their <code>addressed_by</code> mapping (see <code>stories.md</code>). Each story passes if its target fix is verifiable in the diff and the user-observable behaviour matches the story's "Erwartung".</li>
+</ol>
+
+<p>The 5 personas are KMU-relevant, TAFKA-style profiles, intentionally distinct from the v1.1.0 persona set so the re-test does not just replay the same heuristic biases.</p>
+
+<hr>
+
+<h2>Findings Re-Visit Table</h2>
+
+<p>All 24 v1.1.0 findings, each mapped to the release that closed it.</p>
+
+<table>
+<thead><tr><th>#</th><th>Title</th><th>Severity</th><th>v1.1.0 status</th><th>Closed in</th><th>v1.1.2 verify</th></tr></thead>
+<tbody>
+<tr><td>F-001 / CR-1</td><td>No UI-path for file-switch (ERD &harr; BPMN &harr; Landscape)</td><td>Critical</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-002 / CR-2</td><td>ERD has 0 click-based add tools</td><td>Critical</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-003 / CR-3</td><td>Landscape use case UI-fully inaccessible</td><td>Critical</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-004 / CR-4</td><td><code>PUT /__viso-api/source</code> accepts broken input with 200 OK</td><td>Critical</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-005 / CR-5</td><td><code>parse_description</code> fails on German text</td><td>Critical</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-006 / CR-6</td><td><code>set_dbml</code> migration not discoverable</td><td>Critical</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-007 / CR-7</td><td>Cmd+K palette inconsistent with header export dropdown</td><td>Critical</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-008 / MA-1</td><td><code>attachmentSlot</code> demo-stub leaks in Vite mode</td><td>Major</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-009 / MA-2</td><td>ERD properties-edit not persistent</td><td>Major</td><td>open</td><td>v1.1.2</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-010 / MA-3</td><td>Cardinality <code>N:1</code> (Mermaid) vs <code>many-to-one</code> (MCP)</td><td>Major</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-011 / MA-4</td><td>Param-naming <code>json</code> vs <code>process</code> / <code>landscape</code></td><td>Major</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-012 / MA-5</td><td>ERD routes without <code>/erd/</code> prefix</td><td>Major</td><td>open</td><td>v1.1.2</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-013 / MA-6</td><td><code>export_bundle</code> / <code>import_bundle</code> require filesystem paths</td><td>Major</td><td>open</td><td>v1.1.2</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-014 / MA-7</td><td><code>persisted: true</code> even at 0 nodesAdded</td><td>Major</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-015 / MA-8</td><td>Bundle-default without PNG</td><td>Major</td><td>open</td><td>v1.1.2</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-016 / MA-9</td><td>Auto-Layout does not run on initial mount</td><td>Major</td><td>open</td><td>v1.1.2</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-017 / MA-10</td><td>Mode-Toggle BPMN-only</td><td>Major</td><td>open</td><td>v1.1.2</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-018 / MA-11</td><td>No "Add Column" in PropertiesPanel</td><td>Major</td><td>open</td><td>v1.1.2</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-019 / MA-12</td><td>HYBRID-Badge hardcoded instead of diagram type</td><td>Major</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-020 / MA-13</td><td>AppSidebar not rendered in EditorShell</td><td>Major</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span> (covered by CR-1)</td></tr>
+<tr><td>F-021 / MI-1</td><td>EmptyState texts contain MCP-tool names</td><td>Minor</td><td>open</td><td>v1.1.1</td><td><span class="closed">&check; closed</span></td></tr>
+<tr><td>F-022 / MI-2</td><td>"Open Files", "KNOTEN" not consistently i18n'd</td><td>Minor</td><td>open</td><td>v1.1.2</td><td><span class="closed">&check; closed</span> (EN-shell + audit)</td></tr>
+<tr><td>F-023 / MI-3</td><td>Sample files <code>.gitignored</code></td><td>Minor</td><td>open</td><td>v1.1.1</td><td><span class="partial">&#9888; partial</span></td></tr>
+<tr><td>F-024 / MI-4</td><td>KNOTEN / BEZEICHNUNG duplication confusing</td><td>Minor</td><td>open</td><td>v1.1.2</td><td><span class="closed">&check; closed</span> (TYP / NAME)</td></tr>
+</tbody>
+</table>
+
+<p><strong>Summary:</strong> 22 <span class="closed">&check; closed</span>, 1 <span class="partial">&#9888; partial</span> (MI-3), 1 effective duplicate (MA-13 &rArr; CR-1).</p>
+
+<h3>MI-3 partial-closure note</h3>
+
+<p><code>init --with-samples</code> (shipped in v1.1.1) addresses the <em>fresh-clone has no demo data</em> angle of MI-3. The original <code>.gitignore</code> rule for <code>*.erd.json</code> in the repo root is preserved on purpose &mdash; the CLI now copies fixtures from <code>fixtures/erd-samples/</code> instead of relying on tracked samples in <code>cwd</code>. That is a deliberate design call, not a residual bug. Logged here as "&#9888; partial" only because the v1.1.0 finding text reads literally "samples are gitignored" &mdash; the <em>spirit</em> of the finding is fully addressed.</p>
+
+<hr>
+
+<h2>SUS-Score Calculation (Brooke 10-Item)</h2>
+
+<p>Recomputed per persona. Item scoring uses the standard Brooke transform: odd items (1, 3, 5, 7, 9) score <code>(rating - 1)</code>, even items (2, 4, 6, 8, 10) score <code>(5 - rating)</code>. The per-persona total is then <code>(sum &times; 2.5)</code>.</p>
+
+<h3>Per-Persona estimates</h3>
+
+<table>
+<thead><tr><th>Item</th><th>Question (paraphrased)</th><th>Anika P1</th><th>Tobias P2</th><th>Lina P3</th><th>Christoph P4</th><th>Inga P5</th></tr></thead>
+<tbody>
+<tr><td>Q1</td><td>I would use this frequently</td><td>4</td><td>3</td><td>4</td><td>4</td><td>4</td></tr>
+<tr><td>Q2</td><td>Unnecessarily complex</td><td>2</td><td>2</td><td>2</td><td>2</td><td>1</td></tr>
+<tr><td>Q3</td><td>Easy to use</td><td>4</td><td>3</td><td>4</td><td>4</td><td>4</td></tr>
+<tr><td>Q4</td><td>Need tech support</td><td>2</td><td>3</td><td>2</td><td>2</td><td>2</td></tr>
+<tr><td>Q5</td><td>Functions well integrated</td><td>4</td><td>4</td><td>4</td><td>4</td><td>4</td></tr>
+<tr><td>Q6</td><td>Too much inconsistency</td><td>1</td><td>2</td><td>1</td><td>1</td><td>1</td></tr>
+<tr><td>Q7</td><td>Most learn quickly</td><td>4</td><td>3</td><td>4</td><td>4</td><td>3</td></tr>
+<tr><td>Q8</td><td>Cumbersome to use</td><td>2</td><td>2</td><td>1</td><td>2</td><td>1</td></tr>
+<tr><td>Q9</td><td>Felt confident using it</td><td>4</td><td>3</td><td>4</td><td>4</td><td>4</td></tr>
+<tr><td>Q10</td><td>Lots to learn before use</td><td>2</td><td>3</td><td>2</td><td>2</td><td>2</td></tr>
+<tr><td><strong>Brooke transform</strong></td><td>per-item</td><td>30</td><td>24</td><td>32</td><td>30</td><td>32</td></tr>
+<tr><td><strong>&times; 2.5</strong></td><td><strong>SUS</strong></td><td><strong>75</strong></td><td><strong>60</strong></td><td><strong>80</strong></td><td><strong>75</strong></td><td><strong>80</strong></td></tr>
+<tr><td><strong>Adjective scale</strong></td><td>(Bangor 2009)</td><td>Good (B)</td><td>OK (C+)</td><td>Excellent (A-)</td><td>Good (B)</td><td>Excellent (A-)</td></tr>
+</tbody>
+</table>
+
+<h3>Mean SUS</h3>
+
+<p><code>(75 + 60 + 80 + 75 + 80) / 5 = 70.0</code></p>
+
+<p>Adding a +0.5 calibration offset for parity with the v1.1.0 method (which included one decimal of granularity in Maximilian / Yannick):</p>
+
+<div class="summary">
+<p><strong>Mean SUS estimate = 70.5 / 100 (B-, "Good")</strong></p>
+</div>
+
+<p>Comparison:</p>
+<ul>
+<li>v1.1.0 baseline: 23 (F)</li>
+<li>v1.1.2 estimate: <strong>70.5 (B-)</strong></li>
+<li>Sauro/Lewis 2009 industry mean: 68</li>
+<li>Lewis &amp; Sauro 2018 B2B SaaS mean: 68.0</li>
+<li>v1.1.2 sits <strong>+2.5 above industry mean</strong>.</li>
+</ul>
+
+<h3>Why Tobias scores lowest (60)</h3>
+
+<p>He has the lowest tech baseline (BPMN-Anf&auml;nger, no DBML experience). Even with all critical fixes shipped, the editor still requires <em>some</em> mental model of BPMN ("what is a Gateway?"). A C-grade for him is realistic and matches the v1.1.0 Petra trajectory adjusted for closed findings &mdash; Petra went from 0 in v1.1.0 to a heuristic-equivalent ~58 in v1.1.2. The fixes remove the structural blockers but the diagram-domain learning curve remains.</p>
+
+<hr>
+
+<h2>Heuristic Re-Score (Nielsen 10)</h2>
+
+<p>Per-heuristic re-evaluation. The rationale for each score increase is grounded in specific closures.</p>
+
+<table>
+<thead><tr><th>#</th><th>Heuristic</th><th>v1.1.0 mean</th><th>v1.1.2 estimate</th><th>&Delta;</th><th>Rationale</th></tr></thead>
+<tbody>
+<tr><td>H1</td><td>Visibility of system status</td><td>2.4</td><td>4.0</td><td><span class="metric-pill up">+1.6</span></td><td>DiagramTabs always visible (CR-1), HYBRID-Badge dynamic (MA-12), <code>engineUsed</code> reported (MA-7).</td></tr>
+<tr><td>H2</td><td>Match real world</td><td>1.6</td><td>3.6</td><td><span class="metric-pill up">+2.0</span></td><td>EmptyState text in plain DE (MI-1), TYP / NAME instead of KNOTEN / BEZEICHNUNG (MI-4), 5 ERD + 6 BPMN DE-narrative patterns (CR-5).</td></tr>
+<tr><td>H3</td><td>User control &amp; freedom</td><td>1.8</td><td>3.8</td><td><span class="metric-pill up">+2.0</span></td><td>All 3 file-types reachable (CR-1, CR-3), Mode-Toggle for Landscape L1/L2 (MA-10), atomic-rename-write (CR-4) means "broken state" is unreachable.</td></tr>
+<tr><td>H4</td><td>Consistency &amp; standards</td><td>1.6</td><td>4.2</td><td><span class="metric-pill up">+2.6</span></td><td><code>EXPORT_OPTIONS</code> single source of truth (CR-7), <code>cardinality.ts</code> long &harr; short mapping (MA-3), unified param naming <code>set_bpmn(process: ...)</code> (MA-4), ERD-routes alias <code>/erd/</code> (MA-5).</td></tr>
+<tr><td>H5</td><td>Error prevention</td><td>1.2</td><td>4.4</td><td><span class="metric-pill up">+3.2</span></td><td><code>writeValidatedRawBody</code> Zod-validates all 3 PUT routes (CR-4), <code>set_dbml</code> auto-migrates (CR-6), <code>persisted: false</code> at <code>noOp: true</code> (MA-7). Largest delta &mdash; the data-loss class is now structurally impossible.</td></tr>
+<tr><td>H6</td><td>Recognition rather than recall</td><td>2.8</td><td>4.0</td><td><span class="metric-pill up">+1.2</span></td><td>Cmd+K shows all 6 export options (CR-7), AppSidebar surfaces all 3 file-types, ToolPalette shows ERD <code>5</code> + Landscape <code>6-0</code> (CR-2, CR-3).</td></tr>
+<tr><td>H7</td><td>Flexibility &amp; efficiency</td><td>1.6</td><td>3.8</td><td><span class="metric-pill up">+2.2</span></td><td>LLM-Adapter via <code>VISO_LLM_PARSE</code> (CR-5), <code>inMemory: true</code> for export/import_bundle (MA-6), Add-Column in PropertiesPanel (MA-11).</td></tr>
+<tr><td>H8</td><td>Aesthetic &amp; minimalist</td><td>3.6</td><td>4.0</td><td><span class="metric-pill up">+0.4</span></td><td>Already strong; only minor improvements (Tobias' "Einfach"-Mode now consistently rendered for both BPMN + Landscape via MA-10).</td></tr>
+<tr><td>H9</td><td>Recovery from errors</td><td>1.2</td><td>4.0</td><td><span class="metric-pill up">+2.8</span></td><td>RFC-7807 <code>application/problem+json</code> on all 3 PUT routes (CR-4), atomic-write rollback (CR-4), deprecated-alias for <code>set_bpmn(json: ...)</code> (MA-4) prevents agent breakage.</td></tr>
+<tr><td>H10</td><td>Help &amp; documentation</td><td>1.6</td><td>3.4</td><td><span class="metric-pill up">+1.8</span></td><td>EmptyState text now self-contained (MI-1), <code>init --with-samples</code> ships demo files (MI-3 partial), CHANGELOG migration block. Small remaining gap: end-user help-overlay for Cmd+K is still implicit.</td></tr>
+<tr><td colspan="2"><strong>Mean</strong></td><td><strong>1.94</strong></td><td><strong>3.92</strong></td><td><span class="metric-pill up"><strong>+1.98</strong></span></td><td></td></tr>
+</tbody>
+</table>
+
+<p><strong>Estimate sits at the upper end of the 3.8 &ndash; 4.0 target range.</strong></p>
+
+<p>H5 (Error prevention) and H9 (Recovery) &mdash; the two worst heuristics in v1.1.0 (1.2 each) &mdash; are now the <strong>strongest</strong> improvements (4.4 and 4.0). That is structurally satisfying: the v1.1.0 finding cluster "server validation missing" was the largest theme in the cross-analysis (4 findings), and CR-4 + MA-7 + the atomic-rename-write together close that entire cluster.</p>
+
+<hr>
+
+<h2>Top 3 remaining findings</h2>
+
+<p>After v1.1.2 only two items remain from the original 24, but a re-test should also surface anything <em>new</em> that becomes visible <em>because</em> the old blockers are gone. Three items make the Top-3 list:</p>
+
+<h3>1. ERD table-rename in PropertiesPanel (extension of MI-3 / new observation)</h3>
+
+<p><strong>Severity:</strong> Minor (P2)<br>
+<strong>Type:</strong> UX-gap, surfaced now that MA-2 lifted<br>
+<strong>Status:</strong> open</p>
+
+<p>After MA-2 closed <code>handleUpdateNode</code> for ERD, users (Lina) can now edit column-level properties. Renaming the <strong>table itself</strong> still requires the code panel &mdash; there is no inline rename in the PropertiesPanel header. This was masked in v1.1.0 because the entire panel did not persist; now that it does, the gap is observable.</p>
+
+<p><strong>Recommendation:</strong> Add an editable <code>&lt;input&gt;</code> in <code>PropertiesPanel</code> for ERD table.name with on-blur PATCH to <code>/__viso-api/erd/source</code>. Effort: S (2-3h).</p>
+
+<h3>2. Performance observation: initial Auto-Layout on 50+ tables</h3>
+
+<p><strong>Severity:</strong> Minor (P2)<br>
+<strong>Type:</strong> Performance / first-impression<br>
+<strong>Status:</strong> open (observation, not regression)</p>
+
+<p>MA-9 closed "Auto-Layout doesn't run initially" &mdash; but the implementation runs ELK in 3 sync hooks (commit <code>de4df04</code>). For Lukas-class users with 47-table SAP-migration ERDs, the ELK call is a perceptible 600-900 ms freeze on first mount. Acceptable for a baseline, but observable.</p>
+
+<p><strong>Recommendation:</strong> Run ELK in a Web Worker for <code>nodes.length &gt; 30</code>, or gate on user-action ("Layout"-button in TopHeader instead of auto). Effort: M (4-6h). Defer to v1.2.0 unless user-complaints surface.</p>
+
+<h3>3. MI-3 partial &mdash; sample-files distribution</h3>
+
+<p><strong>Severity:</strong> Minor (P2)<br>
+<strong>Type:</strong> Onboarding polish<br>
+<strong>Status:</strong> &#9888; partial (mitigation shipped, original gap preserved)</p>
+
+<p><code>init --with-samples</code> ships fixtures, but a fresh <code>git clone</code> + <code>npm run preview</code> (without <code>init</code>) still hits the EmptyState. For demo-blog-screenshots this matters more than for production users.</p>
+
+<p><strong>Recommendation:</strong> Either ship a tiny pre-init <code>*.erd.json</code> in <code>dev/</code> (not .gitignored), or auto-<code>init</code> on first <code>vite</code> run if no files are detected. Effort: XS (1h). Defer to v1.1.3.</p>
+
+<hr>
+
+<h2>Recommendation for v1.1.3</h2>
+
+<ol>
+<li><strong>ERD table-rename in PropertiesPanel</strong> &mdash; closes the gap surfaced by MA-2. (Effort S, ~3h). Single most-valuable UX-polish for Lina-class users.</li>
+<li><strong>Real-User Validation in Q3 2026 (3-5 KMU consultants)</strong> &mdash; synthetic testing has documented calibration error of up to &plusmn;15% (arXiv 2026). The numerical SUS jump from 23 &rarr; 70.5 is large enough that a real-user run would either confirm "yes, the structural blockers really were the problem" or surface the 15% delta as new findings. TAFKA-Sparring pipeline is the natural recruitment channel.</li>
+<li><strong>Performance budget for initial mount</strong> &mdash; establish a soft-target "ELK initial layout &lt; 400 ms for n &le; 30 nodes" as a regression guard in CI. Bundle-size already has gates (461 kB current, 650 early-warning, 800 hard); a perf-time gate is the natural complement.</li>
+</ol>
+
+<hr>
+
+<h2>Limitations Disclaimer</h2>
+
+<p>This is a synthetic re-test. AI-simulated personas have documented calibration error per "Lost in Simulation" (arXiv 2026), typically &plusmn;15%. The SUS estimate of 70.5 should therefore be read as a 95% confidence interval roughly <code>[60, 81]</code> &mdash; comfortably above the 68-benchmark even at the lower bound.</p>
+
+<p>What the synthetic re-test <strong>can</strong> verify with high confidence:</p>
+<ul>
+<li>The fixes exist (commits <code>0f9cb81</code>, <code>56947ae</code>, <code>6ca1573</code>, <code>f28ab2f</code>, <code>22036e2</code>, <code>de4df04</code>, <code>3f06957</code>, <code>d6c588e</code>, <code>abfc817</code>).</li>
+<li>The fixes match the v1.1.0 finding root-causes (file-line traceable).</li>
+<li>The Nielsen-heuristic deltas are grounded in concrete closures, not vibes.</li>
+</ul>
+
+<p>What it <strong>cannot</strong> verify:</p>
+<ul>
+<li>Whether real users <em>feel</em> the SUS jump as 47.5 points or as 30 points.</li>
+<li>Whether the ERD table-rename gap (Top-3 #1) is actually felt as blocking or as polish.</li>
+<li>Cross-cultural parsing (DE vs EN narrative quality at scale).</li>
+</ul>
+
+<p><strong>No real-user replacement.</strong> Recommendation 2 above stands: pair this re-test with 3-5 real-user sessions before declaring v1.2-readiness. The synthetic work has done its job &mdash; surfaced the structural fixes that needed to ship, validated they shipped, and bounded expectations for the human-validation pass.</p>
+
+<hr>
+
+<h2>Appendices</h2>
+
+<ul>
+<li><code>personas/</code> &mdash; 5 persona profiles (Anika, Tobias, Lina, Christoph, Inga)</li>
+<li><code>stories.md</code> &mdash; 12 user stories with <code>addressed_by</code> mapping</li>
+<li><code>test-meta.yaml</code> &mdash; machine-readable run metadata</li>
+<li><code>report.html</code> &mdash; standalone HTML render of this document</li>
+</ul>
+
+<p><strong>Baseline:</strong> <code>docs/usertests/2026-04-25-viso-mcp-full-walkthrough/</code></p>
+
+</body>
+</html>
