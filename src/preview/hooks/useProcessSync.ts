@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { applyNodeChanges } from '@xyflow/react';
-import type { Node, Edge, NodeChange } from '@xyflow/react';
-import type { Process, ProcessPositions } from '../../bpmn/schema.js';
+import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
+import type { Node, Edge, NodeChange, EdgeChange, Connection } from '@xyflow/react';
+import type { Process, ProcessPositions, Flow } from '../../bpmn/schema.js';
 import type { ConnectionStatus } from '../components/shared/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
 import { useApiConfig } from '../state/ApiConfig.js';
@@ -179,6 +179,73 @@ export function useProcessSync() {
     [savePositions]
   );
 
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    setEdges((prev) => applyEdgeChanges(changes, prev));
+  }, []);
+
+  const writeProcess = useCallback(
+    async (mutate: (doc: Process) => Process | null) => {
+      const res = await fetch(api.endpoints.bpmnSource, authInit(api.endpoints.authHeader));
+      const raw = await res.text();
+      let doc: Process;
+      try {
+        doc = JSON.parse(raw) as Process;
+      } catch {
+        doc = { format: 'viso-bpmn-v1', nodes: {}, flows: [] };
+      }
+      if (!doc.flows) doc.flows = [];
+      const next = mutate(doc);
+      if (!next) return;
+      await fetch(api.endpoints.bpmnSource, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'text/plain',
+          ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
+        },
+        body: JSON.stringify(next, null, 2),
+      });
+    },
+    [api]
+  );
+
+  const onConnect = useCallback(
+    async (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      const newFlow: Flow = { from: connection.source, to: connection.target };
+      try {
+        await writeProcess((doc) => {
+          const exists = doc.flows.some(
+            (f) => f.from === newFlow.from && f.to === newFlow.to
+          );
+          if (exists) return null;
+          return { ...doc, flows: [...doc.flows, newFlow] };
+        });
+      } catch (err) {
+        console.error('Failed to add flow:', err);
+      }
+    },
+    [writeProcess]
+  );
+
+  const onEdgesDelete = useCallback(
+    async (deleted: Edge[]) => {
+      if (deleted.length === 0) return;
+      try {
+        await writeProcess((doc) => {
+          const remaining = doc.flows.filter(
+            (flow) =>
+              !deleted.some((edge) => flow.from === edge.source && flow.to === edge.target)
+          );
+          if (remaining.length === doc.flows.length) return null;
+          return { ...doc, flows: remaining };
+        });
+      } catch (err) {
+        console.error('Failed to delete flow(s):', err);
+      }
+    },
+    [writeProcess]
+  );
+
   const applyAutoLayout = useCallback(async () => {
     if (nodes.length === 0) return;
     const laidOut = await computeLayout(nodes, edges, {});
@@ -208,6 +275,9 @@ export function useProcessSync() {
     status,
     isEmpty,
     onNodesChange,
+    onEdgesChange,
+    onConnect,
+    onEdgesDelete,
     setNodes,
     setEdges,
     applyAutoLayout,
