@@ -1077,21 +1077,33 @@ function EditorShell({
   const handleSpawnFromPointer = useCallback(
     (type: string, clientPos: { x: number; y: number }) => {
       if (readOnly) return;
-      if (diagramType !== 'bpmn') return;
-      if (type !== 'start-event' && type !== 'end-event' && type !== 'task' && type !== 'gateway') {
-        return;
+      if (!diagramType) return;
+      // Each diagram type only accepts its own shape tools — drop a
+      // landscape token onto an ERD pane (or vice versa) is a no-op.
+      let allowed = false;
+      switch (diagramType) {
+        case 'bpmn':
+          allowed = type === 'start-event' || type === 'end-event' || type === 'task' || type === 'gateway';
+          break;
+        case 'erd':
+          allowed = type === 'table';
+          break;
+        case 'landscape':
+          allowed = type.startsWith('lc-');
+          break;
       }
-      const pane = document.querySelector('[data-viso-canvas-pane="bpmn"]');
+      if (!allowed) return;
+      const pane = document.querySelector(`[data-viso-canvas-pane="${diagramType}"]`);
       if (!pane) return;
       const rect = pane.getBoundingClientRect();
-      handleAddNodeAt(type, { x: clientPos.x - rect.left, y: clientPos.y - rect.top });
+      handleAddNodeAt(type as Tool, { x: clientPos.x - rect.left, y: clientPos.y - rect.top });
     },
     [readOnly, diagramType, handleAddNodeAt]
   );
 
   useSpawnListener({
     onSpawn: handleSpawnFromPointer,
-    enabled: !readOnly && diagramType === 'bpmn',
+    enabled: !readOnly && !!diagramType,
   });
 
   const actions = useMemo(
