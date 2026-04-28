@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { applyNodeChanges } from '@xyflow/react';
-import type { Node, Edge, NodeChange } from '@xyflow/react';
-import type { Landscape, LandscapePositions } from '../../landscape/schema.js';
+import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
+import type { Node, Edge, NodeChange, EdgeChange, Connection } from '@xyflow/react';
+import type { Landscape, LandscapePositions, LandscapeRelation } from '../../landscape/schema.js';
 import type { ConnectionStatus } from '../components/shared/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
 import { useApiConfig } from '../state/ApiConfig.js';
@@ -180,6 +180,78 @@ export function useLandscapeSync() {
     [savePositions]
   );
 
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    setEdges((prev) => applyEdgeChanges(changes, prev));
+  }, []);
+
+  const writeLandscape = useCallback(
+    async (mutate: (doc: Landscape) => Landscape | null) => {
+      const sourceUrl = api.endpoints.landscapeSource;
+      if (!sourceUrl) return;
+      const res = await fetch(sourceUrl, authInit(api.endpoints.authHeader));
+      const raw = await res.text();
+      let doc: Landscape;
+      try {
+        doc = JSON.parse(raw) as Landscape;
+      } catch {
+        doc = { format: 'viso-landscape-v1', nodes: {}, relations: [] };
+      }
+      if (!doc.relations) doc.relations = [];
+      const next = mutate(doc);
+      if (!next) return;
+      await fetch(sourceUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'text/plain',
+          ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
+        },
+        body: JSON.stringify(next, null, 2),
+      });
+    },
+    [api]
+  );
+
+  const onConnect = useCallback(
+    async (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      const newRel: LandscapeRelation = {
+        from: connection.source,
+        to: connection.target,
+      };
+      try {
+        await writeLandscape((doc) => {
+          const exists = doc.relations.some(
+            (r) => r.from === newRel.from && r.to === newRel.to
+          );
+          if (exists) return null;
+          return { ...doc, relations: [...doc.relations, newRel] };
+        });
+      } catch (err) {
+        console.error('Failed to add landscape relation:', err);
+      }
+    },
+    [writeLandscape]
+  );
+
+  const onEdgesDelete = useCallback(
+    async (deleted: Edge[]) => {
+      if (deleted.length === 0) return;
+      try {
+        await writeLandscape((doc) => {
+          const remaining = doc.relations.filter(
+            (rel) =>
+              !deleted.some((edge) => rel.from === edge.source && rel.to === edge.target)
+          );
+          if (remaining.length === doc.relations.length) return null;
+          return { ...doc, relations: remaining };
+        });
+      } catch (err) {
+        console.error('Failed to delete landscape relation(s):', err);
+      }
+    },
+    [writeLandscape]
+  );
+
   const applyAutoLayout = useCallback(async () => {
     if (nodes.length === 0) return;
     const laidOut = await computeLayout(nodes, edges, {});
@@ -209,6 +281,9 @@ export function useLandscapeSync() {
     status,
     isEmpty,
     onNodesChange,
+    onEdgesChange,
+    onConnect,
+    onEdgesDelete,
     setNodes,
     setEdges,
     applyAutoLayout,
