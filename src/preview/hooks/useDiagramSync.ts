@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { applyNodeChanges } from '@xyflow/react';
-import type { Node, Edge, NodeChange } from '@xyflow/react';
-import type { Diagram, Positions } from '../../schema.js';
+import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
+import type { Node, Edge, NodeChange, EdgeChange, Connection } from '@xyflow/react';
+import type { Diagram, Positions, Relation } from '../../schema.js';
 import type { ConnectionStatus } from '../components/StatusIndicator.js';
 import { computeLayout } from '../layout/elk-layout.js';
 import { useApiConfig } from '../state/ApiConfig.js';
 import { authInit, resolveWsUrl } from '../state/apiHelpers.js';
 import { isInitialAutoLayoutNeeded } from './auto-layout.js';
+import { normalizeRelations } from '../normalize-relations.js';
 
 const DEFAULT_WS_PATH = '/__viso-ws';
 const RECONNECT_INTERVAL = 2000;
@@ -82,7 +83,7 @@ export function useDiagramSync() {
       ]);
       const raw = await schemaRes.json();
       // Hub adapter wraps payloads in { ok, data }; Vite returns the raw diagram.
-      const diagram: Diagram = raw?.data ?? raw;
+      const diagram: Diagram = normalizeRelations(raw?.data ?? raw);
       const positions: Positions = posRes.ok ? await posRes.json() : {};
       positionsRef.current = positions;
 
@@ -179,6 +180,105 @@ export function useDiagramSync() {
     [savePositions]
   );
 
+  // Local edge state (selection, internal updates). Persistent edge
+  // create/delete go through `onConnect` / `onEdgesDelete` and round-trip
+  // via the source file + WebSocket reload, so we strip "remove" changes
+  // here — they are handled in `onEdgesDelete` which writes the source.
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    setEdges((prev) => applyEdgeChanges(changes, prev));
+  }, []);
+
+  // Handle "${column}-source" / "${column}-target". The id can itself
+  // contain dashes (e.g. "user_id-source"), so strip the suffix instead
+  // of splitting.
+  const handleColumn = (handleId: string | null | undefined, suffix: '-source' | '-target'): string | null => {
+    if (!handleId || !handleId.endsWith(suffix)) return null;
+    return handleId.slice(0, -suffix.length);
+  };
+
+  const writeDiagram = useCallback(
+    async (mutate: (doc: Diagram) => Diagram | null) => {
+      const res = await fetch(api.endpoints.erdSource, authInit(api.endpoints.authHeader));
+      const raw = await res.text();
+      let doc: Diagram;
+      try {
+        doc = normalizeRelations(JSON.parse(raw)) as Diagram;
+      } catch {
+        doc = { format: 'viso-erd-v1', tables: {}, relations: [] };
+      }
+      if (!doc.relations) doc.relations = [];
+      const next = mutate(doc);
+      if (!next) return;
+      await fetch(api.endpoints.erdSource, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'text/plain',
+          ...(api.endpoints.authHeader ? { Authorization: api.endpoints.authHeader } : {}),
+        },
+        body: JSON.stringify(next, null, 2),
+      });
+    },
+    [api]
+  );
+
+  const onConnect = useCallback(
+    async (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      const fromColumn = handleColumn(connection.sourceHandle, '-source');
+      const toColumn = handleColumn(connection.targetHandle, '-target');
+      if (!fromColumn || !toColumn) return;
+      // Default to many-to-one — typical FK -> PK; user can refine later.
+      const newRel: Relation = {
+        from: { table: connection.source, column: fromColumn },
+        to: { table: connection.target, column: toColumn },
+        type: 'many-to-one',
+      };
+      try {
+        await writeDiagram((doc) => {
+          const exists = doc.relations.some(
+            (r) =>
+              r.from.table === newRel.from.table &&
+              r.from.column === newRel.from.column &&
+              r.to.table === newRel.to.table &&
+              r.to.column === newRel.to.column
+          );
+          if (exists) return null;
+          return { ...doc, relations: [...doc.relations, newRel] };
+        });
+      } catch (err) {
+        console.error('Failed to add relation:', err);
+      }
+    },
+    [writeDiagram]
+  );
+
+  const onEdgesDelete = useCallback(
+    async (deleted: Edge[]) => {
+      if (deleted.length === 0) return;
+      try {
+        await writeDiagram((doc) => {
+          const remaining = doc.relations.filter((rel) => {
+            return !deleted.some((edge) => {
+              const fromColumn = handleColumn(edge.sourceHandle, '-source');
+              const toColumn = handleColumn(edge.targetHandle, '-target');
+              return (
+                rel.from.table === edge.source &&
+                rel.to.table === edge.target &&
+                rel.from.column === fromColumn &&
+                rel.to.column === toColumn
+              );
+            });
+          });
+          if (remaining.length === doc.relations.length) return null;
+          return { ...doc, relations: remaining };
+        });
+      } catch (err) {
+        console.error('Failed to delete relation(s):', err);
+      }
+    },
+    [writeDiagram]
+  );
+
   const applyAutoLayout = useCallback(async () => {
     if (nodes.length === 0) return;
     const laidOut = await computeLayout(nodes, edges, {});
@@ -208,6 +308,9 @@ export function useDiagramSync() {
     status,
     isEmpty,
     onNodesChange,
+    onEdgesChange,
+    onConnect,
+    onEdgesDelete,
     setNodes,
     setEdges,
     applyAutoLayout,

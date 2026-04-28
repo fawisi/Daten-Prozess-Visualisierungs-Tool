@@ -52,6 +52,7 @@ import { ProcessSchema, type Process } from '../bpmn/schema.js';
 import { DiagramSchema } from '../schema.js';
 import { LandscapeSchema } from '../landscape/schema.js';
 import { applyErdTableUpdate, applyLandscapeNodeUpdate } from './node-update.js';
+import { normalizeRelations } from './normalize-relations.js';
 
 // Stable references
 const erdNodeTypes = { table: TableNode };
@@ -130,7 +131,7 @@ function ErdCanvas({
   const api = useApiConfig();
   const sync = useDiagramSync();
   const { t } = useI18n();
-  const { nodes, edges, status, isEmpty, onNodesChange } = sync;
+  const { nodes, edges, status, isEmpty, onNodesChange, onEdgesChange, onConnect, onEdgesDelete } = sync;
 
   useEffect(() => {
     const erdSourceUrl = api.endpoints.erdSource;
@@ -194,6 +195,9 @@ function ErdCanvas({
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onEdgesDelete={onEdgesDelete}
         onNodeClick={onNodeClick}
         onPaneClick={handlePaneClick}
         nodeTypes={erdNodeTypes}
@@ -232,7 +236,7 @@ function BpmnCanvas({
   const api = useApiConfig();
   const sync = useProcessSync();
   const { t } = useI18n();
-  const { nodes, edges, status, isEmpty, onNodesChange } = sync;
+  const { nodes, edges, status, isEmpty, onNodesChange, onEdgesChange, onConnect, onEdgesDelete } = sync;
 
   useEffect(() => {
     const bpmnSourceUrl = api.endpoints.bpmnSource;
@@ -298,6 +302,9 @@ function BpmnCanvas({
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onEdgesDelete={onEdgesDelete}
         onNodeClick={onNodeClick}
         onPaneClick={handlePaneClick}
         nodeTypes={bpmnNodeTypes}
@@ -344,7 +351,7 @@ function LandscapeCanvas({
   const api = useApiConfig();
   const sync = useLandscapeSync();
   const { t } = useI18n();
-  const { nodes, edges, status, isEmpty, onNodesChange } = sync;
+  const { nodes, edges, status, isEmpty, onNodesChange, onEdgesChange, onConnect, onEdgesDelete } = sync;
 
   useEffect(() => {
     const sourceUrl = api.endpoints.landscapeSource ?? api.endpoints.landscapeSchema ?? '';
@@ -409,6 +416,9 @@ function LandscapeCanvas({
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onEdgesDelete={onEdgesDelete}
         onNodeClick={onNodeClick}
         onPaneClick={handlePaneClick}
         nodeTypes={landscapeNodeTypes}
@@ -817,8 +827,12 @@ function EditorShell({
         } catch {
           return;
         }
+        normalizeRelations(parsedDoc as { relations?: unknown });
         const validated = DiagramSchema.safeParse(parsedDoc);
-        if (!validated.success) return;
+        if (!validated.success) {
+          console.error('[viso] ERD update aborted: source failed schema validation', validated.error.issues);
+          return;
+        }
         applyErdTableUpdate(validated.data, id, update);
         await handles.putSource(JSON.stringify(validated.data, null, 2));
         return;
