@@ -1062,22 +1062,34 @@ function EditorShell({
   // handleAddNodeAt path that click-to-place uses.
   const handleSpawnFromPointer = useCallback(
     (type: string, clientPos: { x: number; y: number }) => {
+      console.log('[viso-debug] spawn', { type, diagramType, readOnly });
       if (readOnly) return;
-      if (diagramType !== 'bpmn') return;
-      if (type !== 'start-event' && type !== 'end-event' && type !== 'task' && type !== 'gateway') {
-        return;
-      }
-      const pane = document.querySelector('[data-viso-canvas-pane="bpmn"]');
+      if (!diagramType) return;
+      const allowed =
+        diagramType === 'bpmn'
+          ? type === 'start-event' || type === 'end-event' || type === 'task' || type === 'gateway'
+          : diagramType === 'erd'
+            ? type === 'table'
+            : diagramType === 'landscape'
+              ? type.startsWith('lc-')
+              : false;
+      console.log('[viso-debug] allowed', allowed);
+      if (!allowed) return;
+      const pane = document.querySelector(`[data-viso-canvas-pane="${diagramType}"]`);
+      console.log('[viso-debug] pane', !!pane);
       if (!pane) return;
       const rect = pane.getBoundingClientRect();
-      handleAddNodeAt(type, { x: clientPos.x - rect.left, y: clientPos.y - rect.top });
+      console.log('[viso-debug] calling handleAddNodeAt', type);
+      Promise.resolve(handleAddNodeAt(type as Tool, { x: clientPos.x - rect.left, y: clientPos.y - rect.top }))
+        .then(() => console.log('[viso-debug] handleAddNodeAt OK', type))
+        .catch((err) => console.error('[viso-debug] handleAddNodeAt FAILED', type, err));
     },
     [readOnly, diagramType, handleAddNodeAt]
   );
 
   useSpawnListener({
     onSpawn: handleSpawnFromPointer,
-    enabled: !readOnly && diagramType === 'bpmn',
+    enabled: !readOnly && diagramType !== null,
   });
 
   const actions = useMemo(
