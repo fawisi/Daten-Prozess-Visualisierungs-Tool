@@ -499,6 +499,18 @@ function EditorShell({
     onSelectionChange?.(selectedNode);
   }, [selectedNode, onSelectionChange]);
 
+  // Reset stale shape tools when the active diagram changes — otherwise
+  // picking "Tabelle" in an ERD tab and switching to BPMN would leave
+  // `activeTool='table'` armed, which the cross-pollination guard rejects
+  // but which surfaces to the user as "click does nothing" until they
+  // re-select the cursor.
+  const activeDiagramType = openTabs.find((tab) => tab.path === activeTab)?.type ?? null;
+  useEffect(() => {
+    if (!isToolValidForDiagram(activeDiagramType, activeTool)) {
+      setActiveTool('pointer');
+    }
+  }, [activeDiagramType, activeTool, setActiveTool]);
+
   // Load available files
   useEffect(() => {
     if (!api.endpoints.filesList) {
@@ -966,6 +978,15 @@ function EditorShell({
     async (type: Tool, pos: { x: number; y: number }) => {
       if (readOnly) return;
       if (type === 'pointer' || type === 'pan') return;
+      // Cross-pollination guard: refuse spawns whose tool doesn't match the
+      // active diagram. Without this, an ERD `table` tool that survived a
+      // tab switch would write `{ tables: { table_N: ... } }` into the
+      // BPMN source — corrupting the file and breaking subsequent
+      // edge-create / edge-delete round-trips against the same document.
+      if (!activeFile || !isToolValidForDiagram(activeFile.type, type)) {
+        setActiveTool('pointer');
+        return;
+      }
       const handles = canvasRef.current;
       if (!handles) return;
       const raw = await handles.refreshSource();
@@ -1035,7 +1056,7 @@ function EditorShell({
       }
 
       // ===== Landscape (v1.1.1 — CR-3) =====
-      if (type.startsWith('lc-')) {
+      if (type === 'lc-person' || type === 'lc-system' || type === 'lc-external' || type === 'lc-container' || type === 'lc-database') {
         const kind = type.replace('lc-', '') as 'person' | 'system' | 'external' | 'container' | 'database';
         let doc: { nodes: Record<string, Record<string, unknown>>; relations?: unknown[]; format?: string; name?: string };
         try {
@@ -1061,7 +1082,7 @@ function EditorShell({
         return;
       }
     },
-    [readOnly, api, setActiveTool, t]
+    [readOnly, api, setActiveTool, t, activeFile]
   );
 
   const paneClick = useMemo(() => {
@@ -1078,21 +1099,10 @@ function EditorShell({
     (type: string, clientPos: { x: number; y: number }) => {
       if (readOnly) return;
       if (!diagramType) return;
-      // Each diagram type only accepts its own shape tools — drop a
-      // landscape token onto an ERD pane (or vice versa) is a no-op.
-      let allowed = false;
-      switch (diagramType) {
-        case 'bpmn':
-          allowed = type === 'start-event' || type === 'end-event' || type === 'task' || type === 'gateway';
-          break;
-        case 'erd':
-          allowed = type === 'table';
-          break;
-        case 'landscape':
-          allowed = type.startsWith('lc-');
-          break;
-      }
-      if (!allowed) return;
+      // The cross-pollination guard inside handleAddNodeAt is the
+      // authoritative check; here we just early-out so we don't measure
+      // a pane rect for a drop that would be rejected anyway.
+      if (!isToolValidForDiagram(diagramType, type as Tool)) return;
       const pane = document.querySelector(`[data-viso-canvas-pane="${diagramType}"]`);
       if (!pane) return;
       const rect = pane.getBoundingClientRect();
@@ -1230,6 +1240,25 @@ function EditorShell({
       <CommandPalette diagramType={diagramType} actions={actions} />
     </div>
   );
+}
+
+// Hard guard against tool/diagram cross-pollination. ToolPalette filters
+// the visible buttons by diagramType, but `activeTool` lives in the store
+// and survives a tab switch — without this check, choosing "Tabelle" in
+// an ERD tab and then clicking the BPMN tab would still write a
+// `tables` key into the BPMN source on the next click-to-place / drop.
+function isToolValidForDiagram(diagramType: 'bpmn' | 'erd' | 'landscape' | null, tool: Tool): boolean {
+  if (tool === 'pointer' || tool === 'pan') return true;
+  switch (diagramType) {
+    case 'bpmn':
+      return tool === 'start-event' || tool === 'end-event' || tool === 'task' || tool === 'gateway';
+    case 'erd':
+      return tool === 'table';
+    case 'landscape':
+      return tool.startsWith('lc-');
+    default:
+      return false;
+  }
 }
 
 function typePrefix(type: 'start-event' | 'end-event' | 'task' | 'gateway'): string {
