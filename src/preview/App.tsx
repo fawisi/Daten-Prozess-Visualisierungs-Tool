@@ -541,11 +541,14 @@ function EditorShell({
   // but which surfaces to the user as "click does nothing" until they
   // re-select the cursor.
   const activeDiagramType = openTabs.find((tab) => tab.path === activeTab)?.type ?? null;
+  // B2 (2026-05-03): Reset Tool bei JEDEM Tab-Wechsel auf 'pointer',
+  // nicht nur bei ungueltigem Tool. Vorheriger Effect ueberlebte das
+  // Tool-State beim Wechsel zwischen 2 Tabs gleichen Typs (2× ERD,
+  // 2× BPMN) — Drag-Drop in zweiten Tab griff dann mit altem Tool.
+  // Plan-Anhang C.2 / docs/usage-log/2026-05-03-bug-repro.md (B2 H3).
   useEffect(() => {
-    if (!isToolValidForDiagram(activeDiagramType, activeTool)) {
-      setActiveTool('pointer');
-    }
-  }, [activeDiagramType, activeTool, setActiveTool]);
+    setActiveTool('pointer');
+  }, [activeTab, setActiveTool]);
 
   // Load available files
   useEffect(() => {

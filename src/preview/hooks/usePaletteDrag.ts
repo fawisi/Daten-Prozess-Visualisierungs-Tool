@@ -130,16 +130,35 @@ export interface UseSpawnListenerOptions {
 /**
  * Canvas-side counterpart to `usePaletteDrag`. Listens for the custom
  * `viso-spawn-node` event the palette fires and forwards to `onSpawn`.
+ *
+ * B2 (2026-05-03): Listener wird genau EINMAL beim Mount registriert,
+ * EINMAL beim Unmount entfernt. `onSpawn` und `enabled` werden ueber
+ * Refs gelesen, die immer den aktuellsten Stand halten — verhindert
+ * den Race zwischen `removeEventListener` und neuem `addEventListener`
+ * waehrend Tab-Wechsel oder Strict-Mode-Double-Mount, der einen
+ * Pointer-Up-Event kurz ins Leere laufen liess.
+ * Plan-Anhang C.3.
  */
 export function useSpawnListener({ onSpawn, enabled }: UseSpawnListenerOptions) {
+  const onSpawnRef = useRef(onSpawn);
+  const enabledRef = useRef(enabled);
+
   useEffect(() => {
-    if (!enabled) return;
+    onSpawnRef.current = onSpawn;
+  }, [onSpawn]);
+
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
+
+  useEffect(() => {
     function handler(e: Event) {
+      if (!enabledRef.current) return;
       const detail = (e as CustomEvent<SpawnEventDetail>).detail;
       if (!detail) return;
-      onSpawn(detail.type, { x: detail.clientX, y: detail.clientY });
+      onSpawnRef.current(detail.type, { x: detail.clientX, y: detail.clientY });
     }
     window.addEventListener('viso-spawn-node', handler as EventListener);
     return () => window.removeEventListener('viso-spawn-node', handler as EventListener);
-  }, [onSpawn, enabled]);
+  }, []);
 }
