@@ -3,12 +3,43 @@ title: viso-mcp Stabilisierung — Pfad D (Editor-First)
 type: feat
 status: active
 date: 2026-05-03
+deepened: 2026-05-03
 brainstorm: docs/brainstorms/2026-05-01-viso-mcp-stabilisierung-pfad-d-brainstorm.md
 branch_plan: docs/brainstorm-stabilisierung-pfad-d
 branch_implementation: feat/v1.2-stabilization-d
 ---
 
 # viso-mcp Stabilisierung — Pfad D (Editor-First)
+
+## Enhancement Summary
+
+**Deepened on:** 2026-05-03
+**Sections enhanced:** alle 6 Etappen + Risk + Documentation Plan
+**Research agents used:** Architecture-Strategist, Performance-Oracle, Best-Practices-Researcher, Code-Simplicity-Reviewer, Julik-Frontend-Races, Kieran-TypeScript, Learnings-Researcher, Framework-Docs-Researcher (React Flow 12), Explore (Code-Locations)
+
+### Key Improvements (was hat sich gegenueber v1 geaendert)
+
+1. **Etappen-Reihenfolge umgestellt:** E3 (Backlog-Sweep) nach E4 (Daily-Use) verschoben — Real-Findings priorisieren Polish-Items, sonst Sunk-Cost-Risiko (Architecture-Review).
+2. **E6 als eigene Phase gestrichen.** Hub-Frage wird zu einem Trigger-Punkt _nach_ E5, kein Etappen-Schritt — eigenes Brainstorm + eigener Plan (Simplicity-Review).
+3. **B1-Fix konkretisiert:** `screenToFlowPosition` aus `useReactFlow()` muss innerhalb der Canvas-Komponenten sitzen (nicht in App.tsx). Coordinate-Transform-Helper als reine Funktion in `src/preview/lib/coords.ts` extrahiert. Pure-Function-Test + Playwright-Smoke statt jsdom-NaN-Hell (Kieran + Framework-Docs).
+4. **B2-Hypothese geschaerft:** Top-Verdacht ist `data-viso-canvas-pane`-Selector-Stale beim Tab-Wechsel — Drop landet `null`-silent. Fix via `useRef` statt `querySelector` (Julik-Races).
+5. **E3.2 Auto-Layout vereinfacht:** Web Worker (Loesung A) komplett gestrichen aus aktiver Phase. Stattdessen: Hash-basiertes Layout-Caching + `requestIdleCallback` + Manual-Button. ELK-Config `thoroughness:1` statt 7 bringt 3-5× Speedup (Performance-Oracle).
+6. **Exhaustive-Switch-Refactor neu in E2.5:** 4 nicht-erschoepfende switches in `App.tsx` (Z. 1252, 1265, 1278, 1292) auf `assertNever` umstellen — sonst bricht ein 4. Diagrammtyp stumm (Kieran).
+7. **`EditableReactFlow`-Wrapper mit Generics + Pre-Commit-Hook in E2.B4:** das Solution-Doc-Pattern hatte Generics-Bug, jetzt korrekt typisiert. Pre-Commit-grep verhindert Direkt-`<ReactFlow>`-Imports in Canvas-Komponenten.
+8. **Indikator 2 quantifiziert:** "0 neue usage-log-Eintraege bei mindestens 3 Daily-Use-Sessions in 7 Tagen" statt "praktisch 0" (Architecture).
+9. **Pro-Bug-Sub-Branches** statt Long-Lived-Stabilization-Branch: `fix/B1-drop-position`, `fix/B2-tab-switch`, etc., alle gegen `feat/v1.2-stabilization-d` (Architecture).
+10. **`hub-relevant`-Tag in usage-log** als Pre-Material fuer das Hub-Brainstorm — E6-Folge-Plan startet nicht von Null (Architecture).
+
+### New Considerations Discovered
+
+- **3 ReactFlowProvider-Instanzen Pflicht.** xyflow Issue #5689: Multiple `<ReactFlow>` unter EINEM Provider verursacht Knoten-Jitter. viso-mcp hat 3 Canvases, jeder braucht seinen eigenen Provider. Wenn aktuell nur 1 Provider lebt: das ist ein eigener Bug-Vector neben B1.
+- **Stale-Build ist tatsaechlich vorhanden.** `dist/server.cjs` (22.04.) ist aelter als `src/preview/App.tsx` (26.04.). E1.0 wird 80% der Faelle aufloesen.
+- **Custom-Edges haben `interactionWidth` nicht gesetzt** (Default 20px) — fuer Touch zu klein, Empfehlung: 40px (B4-Hitbox).
+- **Touch-Empfehlungen pro xyflow v12:** `connectionRadius: 30-40` (Default 20), `touch-action: none` auf `.react-flow__pane`.
+- **`spawn-listener.test.tsx` existiert nicht** (im Solution-Doc als Vitest-Vorschlag empfohlen, aber nicht implementiert). Test-Luecke fuer B2-Coverage.
+- **B1 betrifft beide Pfade gleich:** Drag-Drop _und_ Click-to-Place (`paneClick` in `App.tsx:180-190`) nutzen identische `getBoundingClientRect`-Math. Fix muss BEIDE adressieren.
+
+---
 
 ## Overview
 
@@ -17,16 +48,14 @@ aufrollen. Synthetic Tests sagen SUS 70.5 (gut), Fabians Real-Eindruck
 sagt "noch nicht zuverlaessig nutzbar" — diese Luecke schliessen wir,
 indem wir die 4 gemeldeten UX-Bugs (B1–B4) live im Browser
 reproduzieren, fixen, und Fabians taegliche Kundenarbeit im Editor zur
-primaeren Validierungsmethode machen. 6 Etappen, keine Deadline,
-Quality-First.
+primaeren Validierungsmethode machen. 5 Etappen (E1–E5), keine Deadline,
+Quality-First. Die Hub-Frage faellt _nach_ E5 als eigener Plan-Stream.
 
-**Drin:** B1–B4 Bug-Fixes, v1.1.3-Backlog (ERD-Rename, Auto-Layout-Perf,
-Sample-Files), strukturierter Bug-Capture beim Real-Nutzen, Daily-Use-Run
-mit echtem Kundenprojekt, Iteration auf Findings.
+**Drin:** B1–B4 Bug-Fixes, ein eingeschobenes E2.5 (ERD-Rename + exhaustive-switch-Refactor), E3 nach E4 verlagert (Polish nach Real-Validation), strukturierter Bug-Capture beim Real-Nutzen, Daily-Use-Run mit echtem Kundenprojekt, Iteration auf Findings.
 
-**Raus:** Hub-Integration, iframe-Embedding, npm-Package-Refactor in
+**Raus aus dieser Phase:** Hub-Integration, iframe-Embedding, npm-Package-Refactor in
 `@tafka/viso-editor`, neue Features ueber die 3 Use Cases (ERD/BPMN/Landscape)
-hinaus, Open-Source-Promotion.
+hinaus, Open-Source-Promotion, Web Worker fuer ELK.
 
 ---
 
@@ -42,8 +71,8 @@ Code-Schritt aufgeloest werden muss.
 
 ### Root Causes (drei moegliche Ursachen)
 
-1. **Stale Build (Hauptverdacht).** Der MCP-Server faehrt aus
-   `dist/server.cjs`. Diese Datei stammt vom 22.04., waehrend
+1. **Stale Build (Hauptverdacht, faktisch bestaetigt).** Der MCP-Server
+   faehrt aus `dist/server.cjs`. Diese Datei stammt vom 22.04., waehrend
    `src/preview/App.tsx` zuletzt am 26.04. geaendert wurde. Wenn Fabian
    `npx viso-mcp serve` benutzt, laeuft er auf einem 4 Tage alten Build,
    der die Fixes fuer B2/B3/B4 noch nicht enthaelt. Genau dieses
@@ -56,7 +85,8 @@ Code-Schritt aufgeloest werden muss.
    B2 (drag-drop-spawn-diagramm-typ-aware), B3 und B4 (react-flow-edges-readonly)
    wurden code-mässig verifiziert, aber nicht durch Real-User-Sessions.
    Es ist plausibel, dass Edge-Cases (kombinierte Aktionen, bestimmte
-   Files, Tab-Wechsel-Sequenzen) noch brechen.
+   Files, Tab-Wechsel-Sequenzen) noch brechen. Top-Verdacht: ein
+   Selector-Stale beim Tab-Wechsel laesst Drag-Drops "in null" verschwinden.
 
 3. **Synthetic-Test-Blindspot.** Der v1.1.2-Re-Test hat bewusst auf
    den Live-Browser-Pfad verzichtet (Begruendung im Report:
@@ -66,41 +96,39 @@ Code-Schritt aufgeloest werden muss.
 
 ### Bug-Liste (Stand 2026-05-01)
 
-| # | Beschreibung | Use Case | Solution-Doc vorhanden? | Hypothese |
+| # | Beschreibung | Use Case | Solution-Doc vorhanden? | Hypothese (deepened) |
 |---|---|---|---|---|
-| **B1** | Drag-Drop legt Knoten an falscher Stelle ab (nicht beim Mauszeiger) | alle 3? | **Nein** | Coordinate-Transform-Bug — `screenToFlowPosition` vs. `getBoundingClientRect`-basierte Berechnung in `handleSpawnFromPointer` |
-| **B2** | Drag-Drop greift manchmal gar nicht | unklar | Ja: [drag-drop-spawn-diagramm-typ-aware.md](../solutions/ui-bugs/drag-drop-spawn-diagramm-typ-aware.md) | Stale Build oder Edge-Case nach Tab-Wechsel (Commit `38ecee4` hat Cross-Pollination gefixt) |
-| **B3** | Linien (Edges) lassen sich nicht ziehen | unklar | Ja: [react-flow-edges-readonly.md](../solutions/ui-bugs/react-flow-edges-readonly.md) | Stale Build oder Legacy-File-Fall (Commit `51ce91e`) |
-| **B4** | Linien lassen sich nicht loeschen | unklar | Ja: [react-flow-edges-readonly.md](../solutions/ui-bugs/react-flow-edges-readonly.md) | Stale Build oder `interactionWidth` zu klein im Custom-Edge |
+| **B1** | Drag-Drop legt Knoten an falscher Stelle ab | alle 3? | **Nein** | Aktuelle Berechnung `clientPos.x - paneRect.left` ignoriert Zoom + Pan. Kanonische Loesung: React-Flow's `screenToFlowPosition` (rechnet `pointToRendererPoint` mit Transform). Betrifft Drag UND Click-to-Place gleichermassen. |
+| **B2** | Drag-Drop greift manchmal gar nicht | unklar | Ja: [drag-drop-spawn-diagramm-typ-aware.md](../solutions/ui-bugs/drag-drop-spawn-diagramm-typ-aware.md) | Stale Build ODER `data-viso-canvas-pane`-Selector-Stale beim Tab-Wechsel (silent `null`-Return). Plus: Tool-State leckt evtl. ueber Diagramm-Typen. |
+| **B3** | Linien (Edges) lassen sich nicht ziehen | unklar | Ja: [react-flow-edges-readonly.md](../solutions/ui-bugs/react-flow-edges-readonly.md) | Stale Build ODER ERD-spezifischer Legacy-File-Fall (Fix in Commit `51ce91e`). |
+| **B4** | Linien lassen sich nicht loeschen | unklar | Ja: [react-flow-edges-readonly.md](../solutions/ui-bugs/react-flow-edges-readonly.md) | Stale Build ODER `interactionWidth` der Custom-Edges zu klein (default 20px, Touch-zu-klein). Custom-Edges haben das Setting aktuell gar nicht gesetzt. |
 
-### Warum Pfad D (statt A/B/C)
+### Warum Pfad D (Kurzfassung — Vergleich im Brainstorm)
 
-A (Eine Codebase Hub+MCP), B (Shared Core / npm-Package), C (Zwei Welten)
-— alle drei setzen voraus, dass der Editor selbst trägt. Wenn die
-Drag-Drop-Position nach 4 Wochen Re-Test-Optimismus immer noch falsch
-ist, ist jede Hub-Strategie auf Sand gebaut. Pfad D priorisiert die
-Editor-Basis und vertagt die Hub-Frage auf E6 — dort wird sie mit
-Real-Use-Daten entschieden, nicht im Voraus.
+A/B/C aus dem Strategie-Vergleich setzen voraus, dass der Editor
+selbst traegt. Wenn die Drag-Drop-Position nach 4 Wochen
+Re-Test-Optimismus immer noch falsch ist, ist jede Hub-Strategie
+auf Sand gebaut. Pfad D priorisiert die Editor-Basis.
 
 ---
 
 ## Proposed Solution
 
-Sechs Etappen, jede mit klarem Abschluss-Kriterium. Etappen sind
-sequenziell — E2 startet erst, wenn E1 die Bugs reproduziert hat (oder
-festgestellt hat, dass sie bereits gefixt sind und nur ein Re-Build
-fehlte). E6 setzt voraus, dass E5 "kein Frust mehr" produziert hat.
+Fuenf Etappen, jede mit klarem Abschluss-Kriterium. E2 startet erst,
+wenn E1 die Bugs reproduziert hat (oder festgestellt hat, dass
+sie bereits gefixt sind und nur ein Re-Build fehlte).
 
 ```
-E1 Reproduktion ──▶ E2 Critical Fixes ──▶ E3 Backlog-Sweep ──▶
-E4 Daily-Use-Run ──▶ E5 Iteration ──▶ E6 Hub-Frage neu aufrollen
+E1 Reproduktion ──▶ E2 Critical Fixes ──▶ E2.5 Quick-Wins ──▶
+E4 Daily-Use-Run ──▶ E3 Polish-Sweep + E5 Iteration (parallel)
 ```
+
+E3 (Polish) und E5 (Iteration aus Real-Findings) laufen nach E4
+parallel — Polish-Items werden je nach Real-Findings re-priorisiert.
 
 **Bug-driven, nicht use-case-driven:** B1 wird in allen 3 Diagrammtypen
-(ERD, BPMN, Landscape) gemeinsam reproduziert und gefixt, dann B2, dann
-B3/B4. Vorteil: Root-Cause oft im selben Modul — 1 Fix loest 3 Stellen.
-Nachteil: kein "ein Use-Case komplett fertig"-Gefuehl bis ganz zum
-Schluss.
+gemeinsam reproduziert und gefixt, dann B2, dann B3/B4. Vorteil:
+Root-Cause oft im selben Modul — 1 Fix loest 3 Stellen.
 
 ---
 
@@ -109,207 +137,307 @@ Schluss.
 ### Etappe E1 — Live-Reproduktion (Gate)
 
 **Ziel:** Klarheit, ob die 4 Bugs aktuell tatsaechlich im Editor auftreten,
-und falls ja: was genau passiert (Repro-Steps + erwartetes-vs-tatsaechliches
-Verhalten). Ohne diese Klarheit faellt jeder Fix in den Synthetic-vs-Real-Spalt.
+und falls ja: was genau passiert. Ohne diese Klarheit faellt jeder Fix
+in den Synthetic-vs-Real-Spalt.
 
 #### E1.0 — Build-Freshness-Check (allererster Schritt)
 
-Bevor irgendein Bug reproduziert wird:
+```bash
+# Disambiguation in 5 Sekunden
+stat -f "%Sm" dist/server.cjs src/preview/App.tsx src/tools.ts
+git log -1 --format="%h %s" -- dist/
+git log -1 --format="%h %s" -- src/
+```
 
-- [ ] `stat dist/server.cjs src/tools.ts src/preview/App.tsx` — wenn `src/` neuer ist als `dist/`: `npm run build` ausfuehren
-- [ ] `npm test` muss gruen sein (310/310 nach Unreleased-Block, Stand 2026-05-01)
-- [ ] `npm run typecheck` muss durchgehen
-- [ ] Erst dann den Editor starten
+Wenn `src/`-Mtime > `dist/`-Mtime: `npm run build`, dann zurueck zu E1.1.
 
-**Begruendung:** Wenn der Stale-Build die Bugs erklaert, ist das die
-billigste Loesung. Wir muessen nur sicherstellen, dass es keine
-Verwechslung gibt (Real-Eindruck aus altem Build vs. neuer Code-State).
+- [ ] `npm run build && npm test && npm run typecheck` — alles gruen, sonst nicht weitergehen
 
 #### E1.1 — Editor starten und Sample-Setup
 
-- [ ] In sauberem Test-Verzeichnis: `npx viso-mcp init --with-samples` (zieht 4-Tabellen-DBML, 8-Node-BPMN, 5-Node-Landscape)
+- [ ] Sauberes Test-Verzeichnis ausserhalb des Repo-Roots
+- [ ] `npx viso-mcp init --with-samples` (zieht 4-Tabellen-DBML, 8-Node-BPMN, 5-Node-Landscape)
 - [ ] `npx viso-mcp serve` — Browser auf `http://localhost:5555`
-- [ ] Initial-Smoke: alle 3 Tabs öffnen, jeweils ein Knoten und eine Edge sichtbar? Wenn nicht: Note in Repro-Datei
+- [ ] Initial-Smoke: alle 3 Tabs öffnen, Knoten + Edges sichtbar?
+- [ ] DevTools Hard-Reload + Application > Storage > Clear Site Data (entfernt Service-Worker-Cache)
 
-#### E1.2 — Bug-Repro nach Bug-Gruppen
+#### E1.2 — Bug-Repro nach Bug-Gruppen (vereinfacht)
 
-Repro-Datei: `docs/usage-log/2026-05-03-bug-repro.md`. Pro Bug:
-Diagramm-Typ, Repro-Steps, erwartetes Verhalten, tatsaechliches
-Verhalten, Screenshots wenn moeglich, Build-Hash (`git rev-parse HEAD`).
+Repro-Datei: `docs/usage-log/2026-05-03-bug-repro.md`. Jeder Bug bekommt:
+Build-Hash, Repro-Steps, Expected, Actual (Pixel-Werte!), Frequency, Severity, Console-Output.
 
-**B1 (Drop-Position) — alle 3 Diagrammtypen:**
+**B1 (Drop-Position) — minimal-aussagekraeftig:**
 
-- [ ] BPMN: Tool-Palette → Task ergreifen → auf Canvas droppen → liegt der Knoten am Mauszeiger oder verschoben?
-- [ ] ERD: Tool-Palette → Table ergreifen → droppen → Position pruefen
-- [ ] Landscape: Tool-Palette → Person ergreifen → droppen → Position pruefen
-- [ ] Variation: bei verschiedenen Zoom-Stufen, bei gescrollter Canvas, bei aufgeklapptem Code-Panel
-- [ ] Variation: Click-to-Place (paneClick) vergleichen — derselbe Bug oder anderes Verhalten?
+- [ ] Pro Diagrammtyp ein Drop bei Default-Zoom
+- [ ] Pro Diagrammtyp ein Drop bei Zoom 50%
+- [ ] Pro Diagrammtyp ein Drop nach Pan
+- [ ] Pixel-Offset quantifizieren: erwartete vs. tatsaechliche Mittelpunkt-Position, plus Zoom-Wert + Pan-Offset
+- [ ] Click-to-Place vergleichen — gleicher Bug?
 
-**B2 (Drag greift nicht) — alle 3 Diagrammtypen:**
+(6 Klicks reichen, um Existenz und Muster zu bestaetigen — keine Variations-Matrix.)
 
-- [ ] BPMN → ERD → Landscape Tab-Wechsel, dann sofort drag-drop versuchen
-- [ ] Tool selektieren, dann Tab wechseln, zurueckwechseln, drag-drop versuchen
-- [ ] Tool selektieren, drag-drop wenn Tool-Highlight blau ist
-- [ ] Tool selektieren, drag-drop wenn Tool-Highlight nicht mehr blau ist
+**B2 (Drag greift nicht):**
 
-**B3 (Edges nicht ziehbar) — alle 3 Diagrammtypen:**
+- [ ] BPMN → ERD → Landscape: Tool selektieren, Tab wechseln, sofort drag-drop
+- [ ] Spezifisch: zwischen den Tabs hin- und herwechseln, dann drag — wie oft schluckt's?
+- [ ] DevTools: `console.log` in `handleSpawnFromPointer` einbauen (E1-only, vor Repro), `null`-Selector-Treffer protokollieren
 
-- [ ] Zwei Knoten platzieren, Source-Handle anvisieren, ziehen zum Target-Handle
-- [ ] ERD-Spezial: ueber Spalten-Handle (`column-source` → `column-target`)
-- [ ] Mit Legacy-Files testen (notion-Pipeline-Output mit `cardinality: "N:1"`)
+**B3 (Edges nicht ziehbar):** alle 3 Typen, plus 1× mit Notion-Pipeline-Output (Legacy-Format)
 
-**B4 (Edges nicht loeschbar) — alle 3 Diagrammtypen:**
-
-- [ ] Bestehende Edge anklicken, Backspace
-- [ ] Bestehende Edge anklicken, Delete
-- [ ] Bestehende Edge anklicken, Kontextmenue (Right-Click)? — gibt es das?
-- [ ] Edge-Klick-Hitbox: kann man die Edge ueberhaupt selektieren? (`interactionWidth`-Test)
+**B4 (Edges nicht loeschbar):** Edge anklicken (Hitbox-Test bei verschiedenen Positionen), Backspace, Delete
 
 #### E1.3 — Klassifikation pro Bug
 
-Nach den Repro-Runs ergibt sich pro Bug eine von drei Klassen:
+- **Tatsaechlich offen** → Fix-Plan in E2
+- **Stale-Build-Effekt** (verschwindet nach Re-Build) → CI-Sentinel-Step (E2.0), in CHANGELOG
+- **Edge-Case** → Solution-Doc erweitern + Fix in E2
 
-- **Tatsaechlich offen** (Bug reproduziert sich auch nach Re-Build): Fix-Plan in E2 schreiben
-- **Stale-Build-Effekt** (Bug verschwindet nach `npm run build`): Plan-Punkt in E2 streichen, in CHANGELOG/usage-log dokumentieren
-- **Edge-Case ausserhalb Solution-Doc** (Bug tritt nur in spezifischer Situation auf): Solution-Doc erweitern + Fix in E2
+#### Research Insights — E1
+
+**Best Practices (Bug-Repro-Methodik):**
+- Pflichtfelder pro Bug: Steps / Expected / Actual / Environment / Frequency / Severity / Evidence (GitHub-Issue + STAR-Hybrid)
+- DevTools-Reihenfolge: Hard-Reload → Console → Network → React DevTools → Elements (80% der Faelle sind Stale Cache → Schritt 1 zuerst)
+- Pixel-Offset bei B1 quantifizieren: notiere Zoom-Wert + Pan-Offset + erwartete vs tatsaechliche Position. Diese 3 Werte verraten sofort, ob Coordinate-Transform falsch ist
+- Drag-Drop spezifisch: DevTools im _separaten Fenster_, nicht docked — Pointer-Events haben mit docked DevTools drastisch reduzierte FPS (react-three-fiber Issue #1196)
+
+**Quellen:**
+- https://testgrid.io/blog/guide-to-write-an-effective-bug-report/
+- https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms
+- https://www.codemzy.com/blog/drag-and-drop-bug-fixes
+
+**Markdown-Template fuer `docs/usage-log/2026-05-03-bug-repro.md`:**
+
+```markdown
+# Bug-Repro Session — 2026-05-03
+
+## Build-Info
+- Git-SHA: <short>
+- dist/server.cjs Mtime: <YYYY-MM-DD HH:MM>
+- Stale-Build-Verdacht: ja/nein → npm run build ausgefuehrt: ja/nein
+- Post-Build SHA1 (dist): <hash>
+
+## Environment
+- Browser: Chrome <version> (macOS <version>)
+- DevTools: separates Fenster
+
+## B1 — Drag-Drop falsche Stelle
+**Steps:** 1. ... 2. ...
+**Expected:** Knoten-Mittelpunkt = screenToFlowPosition(clientX, clientY)
+**Actual:** Knoten landet bei (X, Y) im Flow-Space. Offset: -68px x / -52px y. Zoom: 0.75. Pan: (-120, -45).
+**Frequency:** 5/5
+**Severity:** Hoch
+**Console:** keine Errors / [Errors hier]
+
+## B2 / B3 / B4 — analog
+```
 
 **Abschluss-Kriterium E1:** `docs/usage-log/2026-05-03-bug-repro.md` enthaelt
-fuer jeden der 4 Bugs eine Klassifikation und — falls "tatsaechlich offen" —
-prazise Repro-Steps. Commit `docs(usage-log): E1 — Live-Repro 4 Bugs`.
+fuer jeden der 4 Bugs eine Klassifikation und (falls offen) prazise
+Repro-Steps. Commit `docs(usage-log): E1 — Live-Repro 4 Bugs`.
 
 ---
 
 ### Etappe E2 — Critical Fixes
 
 **Ziel:** Die in E1 als "tatsaechlich offen" klassifizierten Bugs fixen.
-Pro Bug eine eigene Phase (E2.B1, E2.B2, E2.B3, E2.B4). Reihenfolge ist
-fix nach Bug-Gruppe, weil Root-Cause zwischen den Bugs ueberlappt
-(Coordinate-Transform betrifft B1 ueberall, Sync-Hooks betreffen B2/B3/B4).
+Pro Bug eigener Sub-Branch (`fix/B1-drop-position`, `fix/B2-tab-switch`, etc.),
+alle gegen `feat/v1.2-stabilization-d`.
+
+#### E2.0 — Build-Freshness-Sentinel (persistent)
+
+Falls E1.0 zeigt, dass Stale Build die Bugs erklaert: die Maßnahme
+persistieren, damit es nicht wieder passiert.
+
+- [ ] Pre-Push-Hook oder CI-Step: `[ src/ -ot dist/ ]` failed-by-default
+- [ ] README-Sektion "Bevor du `npx viso-mcp serve` ausfuehrst: `npm run build` wenn `src/` neuer ist"
+- [ ] Optional: `viso-mcp serve` startet selbst mit Mtime-Check und warnt, wenn Stale
 
 #### E2.B1 — Drop-Position (vermutlich tatsaechlich offen)
 
-**Datei-Verdaechtige (laut Repo-State):**
-- `src/preview/App.tsx` Zeilen ~1077–1095 (`handleSpawnFromPointer`) — nutzt `getBoundingClientRect`-relative Berechnung
-- `src/preview/hooks/usePaletteDrag.ts` — Pointer-Events Drag-Listener
-- React-Flow API: `screenToFlowPosition` waere die kanonische Loesung fuer Coordinate-Transform unter Zoom + Pan
+**Strategie:** Coordinate-Transform-Unification — alle 3 Spawn-Pfade
+(Drag-Drop, Click-to-Place, paneClick) gemeinsam migrieren auf
+`screenToFlowPosition`. Helper extrahieren als reine Funktion fuer
+testbarkeit.
 
-**Hypothese:** `clientPos.x - rect.left` ignoriert React-Flow-Viewport-Transform
-(Zoom, Pan). Bei Zoom != 1 oder verschobenem Viewport landet der Knoten
-verschoben.
+**Fix-Skizze (Plain Language):**
 
-**Fix-Skizze (in Plain Language):** Statt der einfachen Subtraktion `clientPos - paneRect`
-muss die React-Flow-eigene Funktion `screenToFlowPosition` verwendet werden, die
-Zoom und Pan korrekt einrechnet.
+Statt im `App` selbst zu rechnen, fragt `App` den aktuell aktiven
+Canvas: "wandle mir bitte diesen Mauszeiger in deine Flow-Koordinaten
+um". Der Canvas weiss als einziger, wie der Viewport gerade
+verschoben/gezoomt ist (xyflow-Anforderung: `useReactFlow()` muss
+INNERHALB jedes `<ReactFlow>`-Subtrees aufgerufen werden).
 
 **Akzeptanzkriterien E2.B1:**
-- [ ] Bei Zoom 100%, Default-Viewport: Knoten landet beim Mauszeiger (±5px)
-- [ ] Bei Zoom 50% / 200%: Knoten landet beim Mauszeiger
-- [ ] Nach Pan/Scroll des Viewports: Knoten landet beim Mauszeiger
-- [ ] Bei aufgeklapptem Code-Panel: Knoten landet beim Mauszeiger
-- [ ] Click-to-Place verhaelt sich identisch (gleicher Code-Pfad)
-- [ ] Vitest-Test pro Diagramm-Typ: programmatischer Drop bei Zoom != 1 landet am erwarteten Schema-Position
+
+- [ ] Coordinate-Helper als reine Funktion in `src/preview/lib/coords.ts` extrahiert (testbar ohne DOM)
+- [ ] `useReactFlow().screenToFlowPosition` wird in jeder Canvas-Komponente (ErdCanvas/BpmnCanvas/LandscapeCanvas) verwendet, nicht in App.tsx
+- [ ] Bei Zoom 50/100/200% landet Knoten beim Mauszeiger (±5px)
+- [ ] Nach Pan/Scroll: Knoten landet beim Mauszeiger
+- [ ] Click-to-Place (`paneClick` in App.tsx:180-190) verhaelt sich identisch — gleicher Helper genutzt
+- [ ] Pure-Function-Vitest-Test fuer den Helper (kein jsdom-Layout-Engine-Problem)
+- [ ] 1× Playwright-Smoke pro Diagramm-Typ (echte Browser-Drag-Drop)
 - [ ] Solution-Doc neu: `docs/solutions/ui-bugs/drag-drop-position-zoom-aware.md`
+
+#### Research Insights — E2.B1
+
+**React Flow 12 Specifics:**
+- `screenToFlowPosition(clientPos, options?)` rechnet 3 Schritte: `clientPos - domNode.getBoundingClientRect()` → `pointToRendererPoint(transform, snapToGrid)` → `XYPosition`. Genau die mittlere Schicht fehlt aktuell.
+- `useReactFlow()` MUSS innerhalb eines `<ReactFlowProvider>` sein. xyflow Issue #5689: Multiple `<ReactFlow>` unter EINEM Provider verursacht Knoten-Jitter — viso-mcp braucht 3 separate Provider.
+- iPad-Safari: `clientX/Y` (nicht `pageX/Y`) und `touch-action: none` auf `.react-flow__pane` setzen
+- `nodeOrigin` Default `[0, 0]` beibehalten — `screenToFlowPosition` ignoriert `nodeOrigin` ohnehin, also Origin per neuem Knoten setzen wenn zentriert gewollt
+
+**Pitfalls:**
+- P1: Manuelle `clientX - paneRect.left`-Math (genau der Bug)
+- P2: `useReactFlow()` ausserhalb Provider → undefined
+- P4: `pageX` statt `clientX` shifted by scroll
+- P5: 1 Provider fuer mehrere Flows = Knoten-Jitter
+- P7: Default `interactionWidth: 20` (B4) zu klein fuer Touch — wird in B4 mit-gefixt
+
+**Quellen:**
+- https://reactflow.dev/api-reference/hooks/use-react-flow
+- https://reactflow.dev/examples/interaction/drag-and-drop
+- https://github.com/xyflow/xyflow/issues/5689 (multi-instance Provider-Bug)
+
+**Code-Locations (verifiziert via Code-Audit):**
+- `src/preview/App.tsx:1098-1112` — `handleSpawnFromPointer` (Drop-Berechnung)
+- `src/preview/App.tsx:180-190` — `paneClick` Handler (Click-to-Place, identische Math)
+- `src/preview/hooks/usePaletteDrag.ts:36-42` — `dispatchSpawn` (CustomEvent-Emitter, kein Change noetig)
 
 #### E2.B2 — Drag-Drop greift nicht (Edge-Cases nach Tab-Wechsel)
 
-**Wenn Stale-Build-Effekt:** keine Code-Aenderung, nur Build-Hinweis in
-README + CI-Step `[ src/tools.ts -ot dist/server.cjs ]` als Build-Freshness-Test.
+**Wenn Stale-Build-Effekt:** keine Code-Aenderung, nur E2.0-Sentinel.
 
-**Wenn echter Edge-Case:**
-- Hypothese 1: Listener-Cleanup im `useSpawnListener` triggert vor Tab-Wechsel
-- Hypothese 2: `data-viso-canvas-pane="<type>"`-Marker fehlt nach Tab-Wechsel
-- Hypothese 3: `useToolStore` resettet Tool-Selection bei Tab-Wechsel
+**Wenn echter Edge-Case — Top-Hypothesen (sortiert nach Wahrscheinlichkeit):**
+
+- **H2 (sehr hoch):** `document.querySelector('[data-viso-canvas-pane="<diagramType>"]')` ist beim Tab-Wechsel stale (DOM-Replacement und State-Update nicht im selben Commit). `null`-Return → `if (!pane) return` schluckt es geraeuschlos. **Fix:** `useRef` auf das Pane-Element halten, via Callback-Ref im Canvas gesetzt.
+- **H3 (hoch):** `activeTool` steht noch auf `"task"` (BPMN), `diagramType` ist schon `"erd"` → `isToolValidForDiagram` returnt `false`. **Fix:** Beim Tab-Wechsel `setActiveTool('pointer')` ausloesen.
+- **H1 (mittel):** `useEffect`-Cleanup-Race im `useSpawnListener` — Listener kurzzeitig leer zwischen Tab-Wechsel-Commits. **Fix:** Listener permanent auf `window` halten, `enabled`/`onSpawn`-Check via `useRef` lesen.
 
 **Akzeptanzkriterien E2.B2:**
-- [ ] Tool selektieren → Tab wechseln → zurueckwechseln → drag-drop spawnt Knoten
-- [ ] Vitest: `useSpawnListener` enabled-State ueberlebt Re-Mount via Tab-Wechsel
-- [ ] Smoke-Test: alle 3 Tabs ein Mal durchklicken, jeweils drag-drop am Anfang und am Ende der Session
+
+- [ ] Tool selektieren → Tab wechseln → zurueckwechseln → drag-drop spawnt Knoten (5/5)
+- [ ] Vitest mit jsdom + `@testing-library/user-event` deckt H1/H2/H3 (`rerender(<App diagramType="bpmn" />)` + CustomEvent-Dispatch + Spawn-Spy)
+- [ ] Smoke-Test: alle 3 Tabs durchklicken, drag-drop am Anfang und am Ende
+- [ ] `src/preview/__tests__/spawn-listener.test.tsx` neu erstellen (existiert noch nicht)
+
+#### Research Insights — E2.B2
+
+- Vitest deckt 80% der Hypothesen (H1/H2/H3) deterministisch
+- H4/H6 (Pointer-Capture, Strict-Mode-Double-Mount) brauchen Playwright — erst nachgelagert
+- React 19 Dev-Mode mountet Effects 2× (Strict Mode) — das verdoppelt H1-Race-Chance in dev. Production-Build separat testen.
+
+**Code-Locations:**
+- `src/preview/hooks/usePaletteDrag.ts:44-118` — `usePaletteDrag` (Pointer-Events Drag-Listener)
+- `src/preview/hooks/usePaletteDrag.ts:134-145` — `useSpawnListener` (Window-Listener)
+- `src/preview/hooks/usePaletteDrag.ts:28` — `CANVAS_DROPZONE_SELECTOR`
+- `src/preview/state/useToolStore.tsx:164-169, 28-43` — Tool-Persistierung (Context-basiert, Session-only)
 
 #### E2.B3 / E2.B4 — Edges create/delete
 
 Hauptverdacht: Stale-Build. Falls echter Edge-Case:
 
-- Hypothese B3: ERD-Legacy-Files brechen vor `normalizeRelations` (Reader-Pfad)
-- Hypothese B4: `interactionWidth` der Custom-Edge zu klein, Backspace greift ins Leere
-- Hypothese B4 Variant: `onEdgesDelete` wird nicht gefeuert weil `selectionMode`/`selectionOnDrag` falsch
+- **B3:** ERD-Legacy-Files brechen vor `normalizeRelations` (Reader-Pfad bereits gefixt). Falls weiter offen: Spalten-Handle-Suffix-Logik (`column-source`/`column-target`) bei Bindestrichen pruefen.
+- **B4:** `interactionWidth` auf Custom-Edges (`RelationEdge.tsx`, `SequenceFlowEdge.tsx`, `LandscapeRelationEdge.tsx`) ist aktuell **nicht gesetzt** — Default 20px ist fuer Touch zu klein. Empfehlung: `defaultEdgeOptions={{ interactionWidth: 40 }}` plus `connectionRadius: 30` auf den 3 `<ReactFlow>`-Instanzen.
 
 **Akzeptanzkriterien E2.B3:**
+
 - [ ] Drag von Source-Handle zu Target-Handle erzeugt Edge in allen 3 Diagrammtypen
-- [ ] In ERD: Edge auch zwischen `column-source` und `column-target` von Spalten mit Bindestrich im Namen (z.B. `customer-id-source`)
+- [ ] In ERD: Edge auch zwischen `column-source` und `column-target` von Spalten mit Bindestrich im Namen
 - [ ] Source-File enthaelt nach Connect die neue Relation/Flow in kanonischer Form
 - [ ] Bei Legacy-Files: erstes Connect migriert opportunistisch zur v1.1-Form (`normalizeRelations`)
 
 **Akzeptanzkriterien E2.B4:**
-- [ ] Edge anklicken (Hitbox >= 20px), Backspace loescht aus Canvas und Source-File
+
+- [ ] Edge anklicken (Hitbox >= 40px), Backspace loescht aus Canvas und Source-File
 - [ ] Edge anklicken, Delete loescht (gleicher Code-Pfad)
 - [ ] In allen 3 Diagrammtypen reproduzierbar
-- [ ] Pre-Release-Smoke nach Solution-Doc-Checklist (siehe `react-flow-edges-readonly.md`, Sektion "Sentinel-Check"): `EditableReactFlow`-Wrapper als TypeScript-Sentinel-Pflicht prüfen
+- [ ] `interactionWidth: 40` in `defaultEdgeOptions` aller 3 ReactFlow-Instanzen
+- [ ] `connectionRadius: 30` aller 3 ReactFlow-Instanzen
+- [ ] `EditableReactFlow`-Wrapper erstellt mit Generics `<N extends Node, E extends Edge>`, alle 3 Canvases nutzen ihn
 
-**Abschluss-Kriterium E2:** Alle in E1 als "tatsaechlich offen"
-klassifizierten Bugs sind:
-- gefixt (Code-Aenderung) ODER
-- als Stale-Build-Effekt verifiziert (Build-Hinweis dokumentiert) ODER
-- als nicht reproduzierbar zurueckgestellt (in usage-log dokumentiert)
+#### Research Insights — E2.B4
 
-Conventional Commits pro Bug: `fix(canvas): B1 — Drop-Position respects React-Flow viewport transform` etc.
-Solution-Doc pro fix in `docs/solutions/ui-bugs/`.
+**`EditableReactFlow`-Pattern (Kieran-Korrektur des Solution-Doc-Vorschlags):**
+
+```ts
+import type { ReactFlowProps, Node, Edge } from '@xyflow/react';
+
+type RequiredEditable<N extends Node, E extends Edge> =
+  ReactFlowProps<N, E> & Required<Pick<
+    ReactFlowProps<N, E>,
+    'onNodesChange' | 'onEdgesChange' | 'onConnect' | 'onEdgesDelete'
+  >>;
+
+export function EditableReactFlow<N extends Node = Node, E extends Edge = Edge>(
+  props: RequiredEditable<N, E>
+) {
+  return <ReactFlow<N, E> {...props} />;
+}
+```
+
+Plain Language: Der Wrapper erbt Knoten-Typ-Information (Spalten in ERD,
+Label in BPMN). Ohne Generics wuerde der Wrapper jeden Custom-Knoten
+als "unbekannt" sehen.
+
+**Pre-Commit-Hook gegen Direkt-Imports:**
+
+```bash
+#!/bin/sh
+# .husky/pre-commit
+if grep -rn '<ReactFlow ' src/preview/components/canvases/ src/preview/App.tsx 2>/dev/null \
+  | grep -v 'EditableReactFlow' | grep -v '//.*'; then
+  echo "ERROR: direct <ReactFlow> in canvas code. Use EditableReactFlow."
+  exit 1
+fi
+```
+
+**Code-Locations (verifiziert):**
+- `src/preview/hooks/useDiagramSync.ts:194-197` — ERD `handleColumn` Suffix-Strip
+- `src/preview/hooks/useDiagramSync.ts:224-253` — ERD `onConnect`
+- `src/preview/hooks/useDiagramSync.ts:255-280` — ERD `onEdgesDelete`
+- `src/preview/hooks/useProcessSync.ts:211-228, 230-247` — BPMN `onConnect/Delete`
+- `src/preview/hooks/useLandscapeSync.ts:214-234, 236-251` — Landscape `onConnect/Delete`
+- `src/preview/components/{erd,bpmn,landscape}/*Edge.tsx` — Custom-Edges (kein `interactionWidth` aktuell)
+
+**Abschluss-Kriterium E2:** Alle in E1 offenen Bugs gefixt oder klassifiziert.
+Conventional Commits pro Bug. Solution-Docs in `docs/solutions/ui-bugs/`.
 
 ---
 
-### Etappe E3 — v1.1.3 Backlog-Sweep
+### Etappe E2.5 — Quick-Wins (Eingeschoben)
 
-**Ziel:** Die im v1.1.2 Re-Test als "Top 3 remaining findings" markierten
-Punkte schliessen. Diese sind keine Bugs, sondern UX-Polish und
-Performance-Observation, aber sie liegen im selben Code-Bereich wie B1–B4
-und passen daher in dieselbe Phase.
+Zwei Items, die billig und logisch zur E2-Fix-Welle gehoeren —
+teil-implementiert oder strukturelles Schutzgeruest.
 
-#### E3.1 — ERD-Tabellen-Rename in PropertiesPanel (S, ~3h)
+#### E2.5.1 — ERD-Tabellen-Rename in PropertiesPanel (S, ~3h)
 
 **Status:** im CHANGELOG-Unreleased-Block schon notiert, vermutlich
-teil-implementiert. Pruefen: ist `applyErdTableUpdate` in `node-update.ts`
-bereits mit Rename-Logik versehen, oder fehlt das UI-Wiring?
+teil-implementiert (`applyErdTableUpdate` mit Rename-Logik existiert,
+laut CHANGELOG +6 Tests). Pruefen: fehlt nur das UI-Wiring?
 
 **Akzeptanzkriterien:**
-- [ ] Im PropertiesPanel-Header eines ERD-Tabellen-Knotens ist der Name editierbar
-- [ ] On-Blur PATCH ruft `applyErdTableUpdate` mit neuem Namen auf — Tabellen-Schluessel und alle Relations (`from.table`, `to.table`) werden mitgezogen
+
+- [ ] PropertiesPanel-Header: ERD-Tabellen-Name editierbar
+- [ ] On-Blur PATCH ruft `applyErdTableUpdate` auf — Tabellen-Schluessel + alle Relations (`from.table`, `to.table`) werden mitgezogen
 - [ ] Validierung gegen `SafeIdentifier`-Regex; Trivial / Kollision / Invalid sind stille no-ops
-- [ ] Vitest-Tests fuer Rename-Happy-Path, Kollision, Invalid (laut CHANGELOG bereits 6 neue Tests in `node-update.test.ts`)
+- [ ] CHANGELOG aktualisiert
 
-#### E3.2 — Auto-Layout-Performance (Web Worker, M, ~5h)
+#### E2.5.2 — Exhaustive-Switch-Refactor in App.tsx (XS, ~30 min)
 
-**Status:** Beobachtet im Re-Test (600–900ms Freeze bei 47 Tabellen). Nicht
-blockierend, aber nervig.
-
-**Hypothese-Loesung A:** ELK in Web Worker fuer `nodes.length > 30`. Saubere
-Trennung, kein Main-Thread-Block, aber zusaetzlicher Code.
-
-**Hypothese-Loesung B:** Auto-Layout nicht automatisch beim Mount, sondern
-nur via Button-Click (de-facto Opt-In). Trivial, kostet aber initiale
-"sieht aufgeraeumt aus"-Erfahrung.
-
-**Empfehlung:** Loesung B als Quick-Win in E3, Loesung A als Folge-Item
-falls noch Frust.
+**Status:** 4 nicht-erschoepfende `switch`-Statements in `App.tsx`
+(Zeilen 1252, 1265, 1278, 1292: `isToolValidForDiagram`, `typePrefix`,
+`defaultLabel`, `landscapeDefaultLabel`). Ein 4. Diagrammtyp wuerde
+stumm fehlschlagen.
 
 **Akzeptanzkriterien:**
-- [ ] Initial-Mount mit 47 Tabellen blockt UI nicht > 200ms
-- [ ] "Layout"-Button im TopHeader manuell triggerbar
-- [ ] Bestehender Auto-Layout-Test in `auto-layout.test.ts` weiter gruen
 
-#### E3.3 — Sample-Files Distribution (XS, ~1h)
+- [ ] Helper `assertNever(x: never): never` in `src/preview/lib/exhaustive.ts` neu
+- [ ] Alle 4 switch-default-Branches umgestellt auf `return assertNever(diagramType)`
+- [ ] `npm run typecheck` gruen — bei einem hypothetischen 4. Diagrammtyp wuerden alle 4 Stellen TS-Errors werfen
 
-**Status:** MI-3 partial. `init --with-samples` shipped, aber `git clone +
-npm run preview` ohne `init` faellt in EmptyState.
-
-**Loesung:** Tiny pre-init `dev/sample.erd.json` (nicht .gitignored), nur
-fuer den Demo-/Screenshot-Fall.
-
-**Akzeptanzkriterien:**
-- [ ] Frischer `git clone` + `npm run preview` zeigt einen sample-Zustand
-- [ ] Production-Pfad (`init` ohne `--with-samples`) bleibt unveraendert (leeres Verzeichnis)
-
-**Abschluss-Kriterium E3:** Alle 3 Backlog-Items entweder geschlossen
-oder mit klarer Begruendung verworfen. CHANGELOG aktualisiert (Unreleased
-→ v1.1.3 oder v1.2-rc).
+**Plain Language:** "Wenn jemand spaeter einen 4. Diagrammtyp einfuehrt,
+bricht der Build an genau den Stellen, wo eine Erweiterung noetig ist —
+kein Suchen, kein Vergessen."
 
 ---
 
@@ -318,102 +446,130 @@ oder mit klarer Begruendung verworfen. CHANGELOG aktualisiert (Unreleased
 **Ziel:** Fabian nutzt den stabilisierten Editor fuer ein echtes
 Kundenprojekt komplett ohne Workarounds. Das ist die einzige
 Validierung, die die Synthetic-vs-Real-Luecke schliesst.
+**Wichtig:** E4 kommt VOR E3 — Real-Findings priorisieren Polish.
 
 #### Setup
 
-- [ ] Kundenprojekt auswaehlen, fuer das ERD oder BPMN gebraucht wird (Notion-Pipeline-Output OK, Greenfield OK)
-- [ ] Vorab: Browser-Tab-Bookmark, Editor + `docs/usage-log/`-Verzeichnis erreichbar haben
-- [ ] Vereinfachter Bug-Capture-Modus: wenn Frust, einfach in Chat schreiben — Claude legt `docs/usage-log/YYYY-MM-DD-<slug>.md` an mit Repro-Steps
+- [ ] Kundenprojekt waehlen (Notion-Pipeline-Output OK, Greenfield OK)
+- [ ] Browser-Tab-Bookmark, `docs/usage-log/`-Verzeichnis erreichbar
+- [ ] Bug-Capture-Modus: Frust im Chat → Claude legt `docs/usage-log/YYYY-MM-DD-<slug>.md` an
 
-#### Was Fabian probieren soll
+#### Was Fabian probiert
 
-- [ ] Mindestens 1 ERD von 5+ Tabellen vollstaendig im Editor zusammenklicken (kein Code-Panel, kein Terminal)
-- [ ] Mindestens 1 BPMN von 5+ Knoten vollstaendig zusammenklicken
-- [ ] Mindestens 1 Landscape mit 3+ Boundaries
-- [ ] Bestehendes Notion-Pipeline-Output oeffnen, eine Tabelle umbenennen, eine Spalte hinzufuegen, eine Relation erstellen, alles speichern, Browser-Reload, alles noch da
-- [ ] Export einmal pro Diagramm-Typ ausprobieren (Mermaid, SVG/PNG)
+- [ ] 1× ERD von 5+ Tabellen vollstaendig im Editor zusammenklicken
+- [ ] 1× BPMN von 5+ Knoten vollstaendig zusammenklicken
+- [ ] 1× Landscape mit 3+ Boundaries
+- [ ] Notion-Pipeline-Output oeffnen, Tabelle umbenennen, Spalte hinzufuegen, Relation erstellen, Reload, alles noch da
+- [ ] Export pro Diagramm-Typ ausprobieren (Mermaid, SVG/PNG)
 
-#### Was protokolliert wird
+#### Bug-Capture pro Frust-Punkt
 
-Pro Frust-Punkt im Chat → Claude legt `docs/usage-log/<datum>-<slug>.md` an mit:
 - Datum + Diagramm-Typ + Build-Hash
 - Repro-Steps (wenn moeglich)
-- Erwartetes Verhalten
-- Tatsaechliches Verhalten
+- Expected vs Actual
 - Schweregrad (klein / mittel / blockierend)
+- **Tag `hub-relevant`** wenn ein Friction-Punkt Hub-Architektur betrifft (z.B. "kann nicht in Notion einbetten") — fuer das Hub-Folge-Brainstorm
 
-**Abschluss-Kriterium E4:** Mindestens ein abgeschlossenes
-Kundenprojekt, dessen Diagramm-Output komplett im Editor entstanden ist.
-`docs/usage-log/`-Verzeichnis enthaelt 0 oder mehr Eintraege — egal wie
-viele, Hauptsache ehrlich.
+**Abschluss-Kriterium E4:** Mindestens 1 abgeschlossenes Kundenprojekt
+komplett im Editor erstellt. `docs/usage-log/`-Verzeichnis enthaelt 0
+oder mehr Eintraege — egal wie viele, Hauptsache ehrlich.
+
+---
+
+### Etappe E3 — Polish-Sweep (post-E4)
+
+**Ziel:** Re-priorisierte Polish-Items aus dem v1.1.2-Re-Test, jetzt
+gefiltert durch Real-Findings aus E4. Wenn E4 zeigt, dass
+Auto-Layout-Performance nie ein Problem war: streichen. Wenn andere
+Polish-Items aus E4 dazugekommen sind: einsortieren.
+
+#### E3.1 — Auto-Layout-Performance (M, ~4h, falls in E4 als Frust gemeldet)
+
+**Empfehlung statt Web-Worker (Performance-Oracle):** drei billige Hebel
+in dieser Reihenfolge — wenn die ersten zwei reichen, ist Schritt 3
+und der Worker ueberfluessig.
+
+1. **Hash-basiertes Layout-Caching (XS, ~2h)** — `nodes.map(n=>n.id).sort().join('|')` als Cache-Key, Positionen in `*.pos.json` (existiert bereits laut CHANGELOG). Re-Mount mit gleichen Knoten = 0ms ELK. Loest 80% der Faelle.
+2. **Deferred Layout via `requestIdleCallback` (XS, ~1h)** — Mount mit Default-Positionen, Layout snappt nach erstem Paint ein (~300ms). Subjektiv viel besser als 600ms-Freeze.
+3. **Manual-Button als Fallback (XS, ~1h)** — `<button onClick={handleAutoLayout}>` im TopHeader.
+4. **ELK-Config tunen** — `elk.layered.thoroughness: 1` (statt default 7) bringt 3-5× Speedup bei minimalem Qualitaetsverlust.
+5. **Web Worker (Loesung A)** — explizit AUS dieser Phase. Steht in Future Considerations, nur wenn 1+2+3+4 nicht reichen.
+
+**Akzeptanzkriterien (umformuliert):**
+
+- [ ] First Paint < 200ms (nicht: gesamtes Layout < 200ms — unrealistisch fuer ELK bei 47 Knoten)
+- [ ] Layout-Einrasten < 800ms (asynchron, nicht-blockierend)
+- [ ] Re-Mount mit unveraenderten Knoten < 50ms (Cache-Hit)
+- [ ] Bestehender Auto-Layout-Test in `auto-layout.test.ts` weiter gruen
+
+#### E3.2 — Sample-Files Distribution (XS, ~1h)
+
+**Status:** MI-3 partial. `init --with-samples` shipped, aber `git clone +
+npm run preview` ohne `init` faellt in EmptyState.
+
+**Loesung:** Tiny pre-init `dev/sample.erd.json` (nicht .gitignored), nur
+fuer den Demo-/Screenshot-Fall.
+
+#### Research Insights — E3
+
+**ELK-Benchmarks (real):**
+- 30 Knoten: ~150-300ms
+- 50 Knoten: ~500-900ms (passt zur Plan-Beobachtung)
+- 100 Knoten: > 2s
+
+**xyflow v12 + ELK Tipps:**
+- `useNodesState`/`useEdgesState` nur fuer interaktive States — Layout-Pass direkt `setNodes` ohne Hook-Diffing
+- `nodesDraggable={false}` waehrend Layout, dann re-enable
+- `defaultEdgeOptions` statt per-Edge-Props (spart Re-Renders)
+- `onlyRenderVisibleElements: true` bei > 50 Knoten — Viewport-Culling
+- `fitView` separat von Layout — beide zusammen verdoppeln Reflow
+
+**Abschluss-Kriterium E3:** Re-priorisierte Items entweder geschlossen oder begruendet verworfen.
 
 ---
 
 ### Etappe E5 — Iteration
 
-**Ziel:** Die in E4 gemeldeten Bugs / Friction-Punkte fixen, sortiert
-nach Schweregrad. Wiederhole, bis Fabian sagt: "ich nutze es taeglich
-ohne Frust mehr."
+**Ziel:** Die in E4 gemeldeten Bugs fixen, sortiert nach Schweregrad.
+Laeuft parallel zu E3 — Real-Findings haben Vorrang vor
+vermutetem Polish.
 
 #### Vorgehen
 
 - [ ] Pro Eintrag in `docs/usage-log/`: Repro im Editor, Hypothese, Fix, Solution-Doc
-- [ ] Fixes im selben Branch-Pattern wie E2 (`fix/<kurz-beschreibung>`)
-- [ ] Nach jedem Fix: Smoke-Test alle 3 Diagrammtypen (kein Re-Frust durch Regression)
-- [ ] CHANGELOG aktualisiert mit jedem Fix
+- [ ] Fixes im Sub-Branch-Pattern (`fix/<kurz-beschreibung>`)
+- [ ] Nach jedem Fix: Smoke-Test alle 3 Diagrammtypen (kein Re-Frust)
+- [ ] CHANGELOG aktualisiert
 
-#### Loop-Ende
+#### Loop-Ende — beide Indikatoren positiv
 
-E5 endet, wenn beide Indikatoren positiv sind:
+- **Indikator 1 (subjektiv):** Fabian sagt: _"ich nutze es jetzt taeglich, ohne Frust"_
+- **Indikator 2 (objektiv, quantifiziert):** **0 neue `usage-log`-Eintraege bei mindestens 3 Daily-Use-Sessions in 7 Tagen**
 
-- **Indikator 1 (subjektiv):** Fabian sagt explizit: _"ich nutze es jetzt taeglich, ohne Frust"_
-- **Indikator 2 (objektiv):** Frequenz neuer `docs/usage-log/`-Eintraege ist seit > 1 Woche praktisch 0 (kein Cherry-Picking — auch wenn Fabian den Editor aktiv benutzt hat)
+#### E4-Findings, die in E2 als "fixed" galten
+
+- Solution-Doc-Update (Edge-Case-Sektion) + Fix in E5
+- **NICHT** zurueck zu E2 — E2 ist Phase-Gate, kein Loop-Target
 
 **Abschluss-Kriterium E5:** Beide Indikatoren positiv. Letzter Commit
 auf dem Stabilisierungs-Branch ist `chore(release): v1.2.0 —
-Stabilisierung` (oder analog je nach Versions-Strategie).
+Stabilisierung`.
 
 ---
 
-### Etappe E6 — Hub-Frage neu aufrollen
+### Hub-Frage — Trigger nach E5 (kein Etappen-Schritt mehr)
 
-**Ziel:** Mit den Daten aus E1–E5 die in der Brainstorm-Tabelle vertagte
-Hub-Strategie entscheiden.
+Mit den Daten aus E1–E5 die in der Brainstorm-Tabelle vertagte
+Hub-Strategie entscheiden. Eigenes Brainstorm + eigener Plan,
+nicht Etappe dieses Stabilisierungsplans.
 
-#### Input fuer die Entscheidung
-
-- `docs/usage-log/` als Frust-Tagebuch (Was war oft kaputt? Was hat sich gut angefuehlt?)
+**Input:**
+- `docs/usage-log/`-Eintraege mit Tag `hub-relevant` (gesammelt waehrend E4/E5)
 - E2/E3 Solution-Docs (Welche Fixes waren teuer? Welche trivial?)
-- E4 Daily-Use-Erfahrung (Welche Workflows fehlen? Was passt schon?)
-- Hub-Anforderungen (Was muss der Hub rendern? Inline-Edit? Read-only-View? Kommentare?)
+- Hub-Anforderungen (Was muss der Hub rendern? Inline-Edit? Read-only? Kommentare?)
 
-#### Optionen (aus Brainstorm-Tabelle)
-
-- **A — Eine Codebase Hub+MCP:** Ein einziges Repo, der Editor lebt im Hub. Vorteil: Zero-Drift. Nachteil: viso-mcp als Standalone-Tool wird obsolet.
-- **B — Shared Core (`@tafka/viso-editor`):** npm-Package mit dem React-Editor, beide Hosts (Hub + viso-mcp) konsumieren. Vorteil: kein Duplikat-Code. Nachteil: Refactor-Kosten, Versions-Discipline.
-- **C — Zwei Welten:** Hub iframe-embedded `viso-mcp/preview`, leichtes Coupling. Vorteil: minimale Eingriffe. Nachteil: iframe-Pain (Theme, Auth, Resize).
-
-#### Entscheidungs-Format
-
-Eigenes Brainstorm-Doc `docs/brainstorms/2026-MM-DD-viso-mcp-hub-strategie-brainstorm.md`, mit
-identischer Struktur wie das Pfad-D-Doc (Decisions, Open Questions). Plan
-folgt analog.
-
-**Abschluss-Kriterium E6:** Klare Hub-Strategie-Entscheidung mit
-schriftlicher Begruendung, basierend auf E1–E5-Daten — nicht auf
-Vorab-Annahmen. Damit ist Phase D abgeschlossen.
-
----
-
-## Alternative Approaches Considered
-
-| Pfad | Beschreibung | Warum nicht in Phase D |
-|---|---|---|
-| **A — Eine Codebase** | Hub und MCP fusionieren | Wenn Editor nicht traegt, ist die Fusion eine schiefe Basis. Kommt in E6 wenn die Daten es rechtfertigen. |
-| **B — Shared Core npm** | `@tafka/viso-editor`-Package | Refactor-Kosten ohne Validierung, dass der Editor traegt. Hub-Frage geht der Editor-Frage logisch nach. |
-| **C — Zwei Welten** | iframe-Embedding | iframe-Pain (Theme, Auth, Resize) ist ein eigener Workstream. Kommt in E6. |
-| **Synthetic-Tests v1.1.3** | Wie v1.1.2 nochmal, aber 8 Personas | Hat den Real-Eindruck nicht abgebildet. Doppelt machen heilt das nicht. |
-| **Externer Real-User-Test (3-5 Berater)** | Wie im Re-Test empfohlen | Kommt nach E5, nicht waehrend. Fabian-zentriert ist die schnellere Feedback-Schleife. |
+**Triggert:** `compound-engineering:workflows:brainstorm` mit Datei
+`docs/brainstorms/2026-MM-DD-viso-mcp-hub-strategie-brainstorm.md`.
 
 ---
 
@@ -423,21 +579,21 @@ Vorab-Annahmen. Damit ist Phase D abgeschlossen.
 
 | Etappe | Kriterium |
 |---|---|
-| E1 | `docs/usage-log/2026-05-03-bug-repro.md` enthaelt fuer B1–B4 jeweils Klassifikation (offen / stale-build / not-reproduzierbar) und Repro-Steps |
-| E2 | Alle "tatsaechlich offen"-Bugs aus E1 sind gefixt; Vitest-Coverage erhalten oder erweitert; Solution-Doc pro Fix |
-| E3 | ERD-Rename funktioniert; Auto-Layout blockt < 200ms bei 47 Tabellen; sample-Distribution funktioniert |
+| E1 | `docs/usage-log/2026-05-03-bug-repro.md` enthaelt fuer B1–B4 jeweils Klassifikation + Repro-Steps + Pixel-Daten |
+| E2 | Alle "tatsaechlich offen"-Bugs aus E1 sind gefixt; Pure-Function-Vitest-Coverage; Solution-Doc pro Fix; `EditableReactFlow`-Wrapper aktiv |
+| E2.5 | ERD-Rename funktioniert; alle 4 switch-Statements sind exhaustive-checked |
 | E4 | Mindestens 1 abgeschlossenes Kundenprojekt komplett im Editor erstellt |
-| E5 | Subjektiv: Fabian "ohne Frust"; Objektiv: > 1 Woche keine neuen usage-log-Eintraege bei aktiver Nutzung |
-| E6 | Hub-Strategie-Entscheidung (A/B/C oder neue Option) als eigenes Brainstorm dokumentiert |
+| E3 | Real-priorisierte Polish-Items entweder geschlossen oder begruendet verworfen |
+| E5 | Subjektiv: Fabian "ohne Frust"; Objektiv: 0 neue Eintraege bei ≥ 3 Daily-Use / 7 Tage |
 
 ### Nicht-funktional
 
-- **Tests gruen:** `npm test` muss am Ende jeder Etappe gruen sein (aktuell 310/310)
-- **Typecheck gruen:** `npm run typecheck` ohne Fehler
+- **Tests gruen:** `npm test` muss am Ende jeder Etappe gruen sein (310/310 Stand 2026-05-01)
+- **Typecheck gruen:** `npm run typecheck`
 - **Build aktuell:** Vor jedem Etappen-Abschluss `npm run build`, `dist/` darf nicht aelter sein als `src/`
 - **Conventional Commits:** `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
-- **Branch-Hygiene:** Plan-Branch (`docs/brainstorm-stabilisierung-pfad-d`) fuer Plan; Implementation auf eigenem Branch (`feat/v1.2-stabilization-d`)
-- **Solution-Doc nach jedem Fix:** kein Fix ohne dokumentierten Root-Cause + Prevention
+- **Branch-Hygiene:** Plan-Branch (`docs/brainstorm-stabilisierung-pfad-d`); Sub-Branches pro Bug (`fix/B1-...`) gegen `feat/v1.2-stabilization-d`
+- **Solution-Doc nach jedem Fix**
 
 ---
 
@@ -445,132 +601,127 @@ Vorab-Annahmen. Damit ist Phase D abgeschlossen.
 
 ### Primaer (subjektiv, du-zentriert)
 
-- Fabian nutzt `viso-mcp` taeglich fuer Kundenarbeit ohne Workarounds (kein Code-Panel, kein Terminal, keine Notion-Pipeline-Hacks)
+- Fabian nutzt `viso-mcp` taeglich fuer Kundenarbeit ohne Workarounds
 - Fabian sagt explizit: _"das geht jetzt"_
 
 ### Sekundaer (objektiv, als Korrektiv)
 
-- Frequenz neuer Eintraege in `docs/usage-log/` sinkt monoton bis ~0/Woche
-- Tests-Suite waechst (jeder Fix bringt Vitest-Coverage)
+- 0 neue `docs/usage-log/`-Eintraege bei mindestens 3 Daily-Use-Sessions in 7 Tagen
+- Tests-Suite waechst mit jedem Fix
 - CHANGELOG-Unreleased-Block hat < 5 offene Items am Ende
 
 ### Nicht-Ziele
 
-- SUS-Score (kommt erst in E6+ wenn externer Test gemacht wird)
-- Cross-Browser-Coverage (Safari iPad bleibt opportunistisch, kein Pflicht-Browser)
-- Keyboard-Shortcuts-Vollstaendigkeit (Cmd+K + Pflicht-Tools sind genug)
+- SUS-Score (kommt erst beim externen Test post-Stabilisierung)
+- Cross-Browser-Coverage (Safari iPad opportunistisch)
+- Keyboard-Shortcuts-Vollstaendigkeit
 
 ---
 
 ## Dependencies & Prerequisites
 
-### Tools / Setup
-
-- [ ] Node 20.18+ (siehe `package.json` engines)
-- [ ] `npm` mit funktionierendem `node_modules` (frisch: `npm ci`)
-- [ ] Browser (Chrome/Firefox/Safari — Chrome bevorzugt fuer DevTools)
-- [ ] Test-Verzeichnis ausserhalb des Repo-Roots fuer `npx viso-mcp init` (vermeidet Verschmutzung)
-
-### Files / Daten
-
-- [ ] Mindestens 1 echtes Kunden-ERD (Notion-Pipeline-Output OK) fuer E4
-- [ ] Mindestens 1 BPMN-Use-Case (Greenfield OK)
-- [ ] Optional: 1 Landscape-Sample fuer C4 L1/L2
-
-### Knowledge
-
-- [ ] Brainstorm `docs/brainstorms/2026-05-01-viso-mcp-stabilisierung-pfad-d-brainstorm.md` muss internalisiert sein
-- [ ] Solution-Docs aus `docs/solutions/ui-bugs/` und `docs/solutions/integration-issues/` als Referenz griffbereit
-- [ ] CHANGELOG aktuell durchgelesen (v1.1.0 / v1.1.1 / v1.1.2 + Unreleased)
+- Node 20.18+, `npm ci`
+- Browser (Chrome bevorzugt, DevTools im separaten Fenster)
+- Test-Verzeichnis ausserhalb des Repo-Roots fuer `npx viso-mcp init`
+- Mindestens 1 echtes Kunden-ERD fuer E4
+- Brainstorm + Solution-Docs internalisiert, CHANGELOG durchgelesen
 
 ---
 
-## Risk Analysis & Mitigation
+## Risk Analysis & Mitigation (4 echte Risiken)
 
 | Risiko | Wahrscheinlichkeit | Impact | Mitigation |
 |---|---|---|---|
-| **Stale-Build erklaert alle 4 Bugs** | hoch | hoch (positiv) | Erste Aktion in E1.0 ist `npm run build`. Wenn Bugs verschwinden, in CI-Step `[ src/ -ot dist/ ]` aufnehmen. |
-| **B1 ist tiefer als nur Coordinate-Transform** | mittel | mittel | E1.2 mit verschiedenen Zoom-Stufen testet die Hypothese. Falls falsch, neue Hypothese (`reactFlowInstance` falsch geholt, `nodeOrigin` Konfig, etc.) |
-| **E4 zeigt keinen Frust → falsche Sicherheit** | gering | hoch | Indikator 2 (objektive Eintragsfrequenz) als Korrektiv. Wenn Indikator 1 positiv, aber 0 Tage Daily-Use seit dem letzten Fix: nicht abschliessen. |
-| **Fabian-Disziplin fuer Bug-Capture wankt** | mittel | gering | Vereinfachter Capture-Mode (Chat-Meldung statt formales Tagebuch) reduziert Reibung. Claude proaktiv: "willst du das in usage-log festhalten?" |
-| **Hub-Frage (E6) muss frueher entschieden werden** | gering | mittel | Wenn extern getriggert (Stakeholder-Anfrage), separates Brainstorm — nicht in Phase D quetschen |
-| **B1-Fix bricht Click-to-Place (paneClick)** | gering | hoch | Smoke-Test in E2.B1 vergleicht Drag-Drop und Click-to-Place — beide muessen identisches Verhalten zeigen |
-| **`screenToFlowPosition`-Refactor bricht iPad-Drag** | gering | mittel | iPad-Smoke-Test in E2.B1 (auf Hardware oder DevTools-Simulation) |
-| **Tests werden waehrend Fixes flaky** | gering | mittel | Bei Flake: Solution-Doc, kein Skip — Stabilisierung der Test-Suite ist Teil der Phase |
+| **Stale-Build erklaert alle 4 Bugs** | hoch | hoch (positiv) | E1.0 erste Aktion. Wenn Bugs verschwinden: E2.0 Sentinel-Step. |
+| **B1 ist tiefer als nur `screenToFlowPosition`** | mittel | mittel | E1.2 mit Zoom-Variations testet Hypothese. Falls falsch: neue Hypothese (multi-Provider, Pointer-Capture, etc.) |
+| **E4 zeigt keinen Frust → falsche Sicherheit** | gering | hoch | Indikator 2 (≥ 3 Daily-Use / 7 Tage, 0 Eintraege) als hartes Korrektiv |
+| **Fabian-Disziplin fuer Bug-Capture wankt** | mittel | gering | Vereinfachter Capture-Mode (Chat → Claude). Claude proaktiv: "willst du das festhalten?" |
 
 ---
 
 ## Resource Requirements
 
 - **Personal:** Fabian (Validator + Real-User), Claude (Implementor + Documenter)
-- **Zeit:** keine Deadline. Etappen-getaktet, jede Etappe so lang wie noetig.
-- **Infrastruktur:** keine — alles lokal. Keine CI/CD-Aenderungen noetig (vorhandene Github-Actions reichen).
-- **Externe Abhaengigkeiten:** keine — keine neuen npm-Packages, keine API-Calls
+- **Zeit:** keine Deadline, Etappen-getaktet
+- **Infrastruktur:** lokal, keine CI/CD-Aenderungen
+- **Externe Abhaengigkeiten:** keine
 
 ---
 
 ## Future Considerations
 
-- **Externer Real-User-Test (3-5 KMU-Berater) post-E5:** Empfehlung aus dem v1.1.2 Re-Test. TAFKA-Sparring-Pipeline als Recruitment-Channel.
-- **Hub-Integration (E6):** mit Real-Use-Daten entscheidbar. A/B/C-Optionen siehe Alternatives.
-- **Web-Worker fuer Auto-Layout:** wenn E3.2 Loesung B (Manual-Button) nicht reicht, Loesung A (Web-Worker) als Folge-PR.
-- **CI-Step Stale-Build-Guard:** `[ src/ -ot dist/ ]` als Pre-Push-Hook, wenn das Pattern noch ein drittes Mal auftritt.
-- **EditableReactFlow-Wrapper als TypeScript-Sentinel:** `react-flow-edges-readonly.md` schlaegt vor, wurde aber noch nicht implementiert. Sinnvoll vor E6 zu schliessen.
-- **Performance-Budget initial mount:** "ELK initial layout < 400 ms fuer n ≤ 30 nodes" als Regression-Guard in CI ergaenzend zu Bundle-Size-Gates.
+- **Web Worker fuer ELK** — wenn E3.1 Caching+IdleCallback nicht reicht
+- **Externer Real-User-Test** (3-5 KMU-Berater post-E5, TAFKA-Sparring-Channel)
+- **Hub-Brainstorm + -Plan** als Folge-Stream nach E5
+- **Performance-Budget in CI** — "ELK initial < 400ms fuer n ≤ 30 nodes"
+- **CI-Step Stale-Build-Guard** als Pre-Push-Hook (nur wenn Pattern wieder auftritt)
 
 ---
 
-## Documentation Plan
+## Documentation Plan (3 Stellen, nicht 7)
 
 | Wann | Was | Wohin |
 |---|---|---|
-| E1 | Repro-Steps fuer B1–B4 + Klassifikation | `docs/usage-log/2026-05-03-bug-repro.md` |
-| E2 (pro Fix) | Solution-Doc mit Symptom / Root Cause / Fix / Prevention | `docs/solutions/ui-bugs/<slug>.md` |
-| E2 / E3 (pro Fix) | CHANGELOG-Unreleased-Block-Eintrag | `CHANGELOG.md` |
-| E4 (laufend) | Frust-Eintraege bei Real-Nutzung | `docs/usage-log/YYYY-MM-DD-<slug>.md` |
-| E5 (pro Iteration) | Solution-Doc fuer Folge-Fixes | `docs/solutions/<kategorie>/<slug>.md` |
-| E6 | Hub-Strategie-Entscheidung als neues Brainstorm | `docs/brainstorms/2026-MM-DD-viso-mcp-hub-strategie-brainstorm.md` |
-| Phasen-Ende | Plan-Status auf `completed` setzen + Compound-Engineering-Doku der Lessons | `docs/knowledge/<topic>.md` via `compound-engineering:workflows:compound` |
+| E4 (laufend) + E1 | Repro-Eintraege + Frust-Eintraege | `docs/usage-log/` |
+| Pro Fix | Solution-Doc mit Symptom / Root Cause / Fix / Prevention | `docs/solutions/<kategorie>/<slug>.md` |
+| Pro Etappen-Ende | CHANGELOG-Unreleased-Block | `CHANGELOG.md` |
+
+Compound-Engineering-Lessons via `compound-engineering:workflows:compound`
+am Phasen-Ende — kein eigener Doc-Slot, sondern Trigger.
 
 ---
 
 ## References & Research
 
-### Internal References (Brainstorm + Tests)
+### Internal References
 
 - [docs/brainstorms/2026-05-01-viso-mcp-stabilisierung-pfad-d-brainstorm.md](../brainstorms/2026-05-01-viso-mcp-stabilisierung-pfad-d-brainstorm.md) — Hauptinput, alle 8 Decisions
 - [docs/usertests/2026-04-25-viso-mcp-full-walkthrough/report.md](../usertests/2026-04-25-viso-mcp-full-walkthrough/report.md) — v1.1.0 Baseline (SUS 23)
-- [docs/usertests/2026-04-26-viso-mcp-v1-1-2-re-test/report.md](../usertests/2026-04-26-viso-mcp-v1-1-2-re-test/report.md) — v1.1.2 Re-Test (SUS 70.5) + Top 3 remaining findings
+- [docs/usertests/2026-04-26-viso-mcp-v1-1-2-re-test/report.md](../usertests/2026-04-26-viso-mcp-v1-1-2-re-test/report.md) — v1.1.2 Re-Test (SUS 70.5) + Top 3 remaining
+- [docs/plans/2026-04-25-feat-stabilization-sprint-v1-1-1-plan.md](2026-04-25-feat-stabilization-sprint-v1-1-1-plan.md) — Vorgaenger-Stabilisierung (CR-1 bis CR-7)
+- [docs/solutions/ui-bugs/react-flow-edges-readonly.md](../solutions/ui-bugs/react-flow-edges-readonly.md) — B3/B4 + Sentinel-Empfehlung
+- [docs/solutions/ui-bugs/drag-drop-spawn-diagramm-typ-aware.md](../solutions/ui-bugs/drag-drop-spawn-diagramm-typ-aware.md) — B2 Pre-Merge-Checklist
+- [docs/solutions/integration-issues/erd-add-column-silent-fail-legacy-relations.md](../solutions/integration-issues/erd-add-column-silent-fail-legacy-relations.md) — `normalizeRelations`
+- [docs/solutions/integration-issues/notion-to-viso-pipeline-and-set-dbml-stale-build.md](../solutions/integration-issues/notion-to-viso-pipeline-and-set-dbml-stale-build.md) — Stale-Build-Pattern (E1.0 + E2.0)
+- [CLAUDE.md](../../CLAUDE.md) — Projekt-Workflow-Regeln
+- [CHANGELOG.md](../../CHANGELOG.md) — v1.1.0 / v1.1.1 / v1.1.2 + Unreleased
 
-### Internal References (Solution-Docs)
+### Code Hotspots (verifiziert via Code-Audit)
 
-- [docs/solutions/ui-bugs/react-flow-edges-readonly.md](../solutions/ui-bugs/react-flow-edges-readonly.md) — B3/B4 Fix-Hypothese, Sentinel-Check-Empfehlung
-- [docs/solutions/ui-bugs/drag-drop-spawn-diagramm-typ-aware.md](../solutions/ui-bugs/drag-drop-spawn-diagramm-typ-aware.md) — B2 Fix-Hypothese, Pre-Merge-Checklist
-- [docs/solutions/integration-issues/erd-add-column-silent-fail-legacy-relations.md](../solutions/integration-issues/erd-add-column-silent-fail-legacy-relations.md) — `normalizeRelations`-Migration als Pre-Zod-Pass
-- [docs/solutions/integration-issues/notion-to-viso-pipeline-and-set-dbml-stale-build.md](../solutions/integration-issues/notion-to-viso-pipeline-and-set-dbml-stale-build.md) — Stale-Build-Pattern (relevant fuer E1.0)
+- `src/preview/App.tsx:1098-1112` — `handleSpawnFromPointer` (B1)
+- `src/preview/App.tsx:180-190` — `paneClick` (B1, identische Math)
+- `src/preview/App.tsx:193, 300, 414` — `data-viso-canvas-pane`-Marker (B2)
+- `src/preview/App.tsx:1252, 1265, 1278, 1292` — 4 nicht-erschoepfende Switches (E2.5.2)
+- `src/preview/hooks/usePaletteDrag.ts:28, 36-42, 44-118, 134-145` — Drag/Spawn (B2)
+- `src/preview/hooks/useDiagramSync.ts:194-280` — ERD `onConnect/onEdgesDelete` (B3/B4)
+- `src/preview/hooks/useProcessSync.ts:211-247` — BPMN `onConnect/Delete` (B3/B4)
+- `src/preview/hooks/useLandscapeSync.ts:214-251` — Landscape (B3/B4)
+- `src/preview/components/{erd,bpmn,landscape}/*Edge.tsx` — Custom-Edges, kein `interactionWidth` aktuell (B4)
+- `src/preview/state/useToolStore.tsx:28-43, 164-169` — Tool-Persistierung (B2)
 
-### Internal References (Code-Hotspots)
+### Test-Files (verifiziert)
 
-- [src/preview/App.tsx:~1077–1095](../../src/preview/App.tsx) — `handleSpawnFromPointer` (B1, B2)
-- [src/preview/hooks/usePaletteDrag.ts](../../src/preview/hooks/usePaletteDrag.ts) — Pointer-Events Drag-Listener (iPad-safe)
-- [src/preview/hooks/useDiagramSync.ts](../../src/preview/hooks/useDiagramSync.ts) — ERD Sync inkl. `onConnect`/`onEdgesDelete` (B3, B4)
-- [src/preview/hooks/useProcessSync.ts](../../src/preview/hooks/useProcessSync.ts) — BPMN Sync (B3, B4)
-- [src/preview/hooks/useLandscapeSync.ts](../../src/preview/hooks/useLandscapeSync.ts) — Landscape Sync (B3, B4)
-- [src/preview/normalize-relations.ts](../../src/preview/normalize-relations.ts) — Legacy-Relation-Migration (B3 mit Notion-Files)
-- [src/types.ts](../../src/types.ts) — `Tool` + `DiagramType`-Union (Pre-Merge-Checklist)
-- [CHANGELOG.md](../../CHANGELOG.md) — v1.1.0 / v1.1.1 / v1.1.2 + Unreleased ERD-Rename
+- `src/preview/normalize-relations.test.ts` — Legacy-Format-Tests
+- `src/preview/node-update.test.ts` — `applyErdTableUpdate` (E2.5.1 relevant), 13 Cases
+- `src/preview/hooks/auto-layout.test.ts` — `isInitialAutoLayoutNeeded`, 5 Cases
+- `src/preview/__tests__/spawn-listener.test.tsx` — **EXISTIERT NICHT** (in E2.B2 neu erstellen)
 
 ### External References
 
-- [React Flow API: `screenToFlowPosition`](https://reactflow.dev/api-reference/types/react-flow-instance#screen-to-flow-position) — kanonische Coordinate-Transform fuer Zoom + Pan (relevant fuer B1)
-- [React Flow Examples: Drag and Drop](https://reactflow.dev/examples/interaction/drag-and-drop) — Referenz-Implementation fuer Drop-Position
+- [React Flow API: `screenToFlowPosition`](https://reactflow.dev/api-reference/types/react-flow-instance#screen-to-flow-position) — kanonische Coordinate-Transform (B1)
+- [React Flow Examples: Drag and Drop](https://reactflow.dev/examples/interaction/drag-and-drop) — Referenz-Implementation
+- [React Flow: useReactFlow Hook](https://reactflow.dev/api-reference/hooks/use-react-flow)
+- [React Flow: Multiple Flows / Hooks & Providers](https://reactflow.dev/learn/advanced-use/hooks-providers) — 1 Provider pro Flow
+- [xyflow Issue #5689](https://github.com/xyflow/xyflow/issues/5689) — Multi-Instance-Provider-Bug
+- [xyflow Issue #4814](https://github.com/xyflow/xyflow/issues/4814) — `interactionWidth`-Quirk
 - [DBML Spec](https://dbml.dbdiagram.io/docs/) — Source-of-truth fuer ERD-Format
-- [Vitest Docs](https://vitest.dev/) — Test-Runner (3.0+, vorhanden)
+- [Vitest Docs](https://vitest.dev/) — Test-Runner
 
 ### Related Work
 
-- Commit `38ecee4` — Tool/Diagramm-Cross-Pollination Guard (B2-Fix, ein Aspekt)
-- Commit `51ce91e` — Edge create/delete fuer BPMN + Landscape (B3/B4-Fix)
-- Commit `05f953e` — ERD Spalte hinzufuegen + `normalizeRelations` (B3-Vorbereitung)
-- Commit `d61345a` — ERD-Tabellen-Rename (E3.1-Vorbereitung)
+- Commit `38ecee4` — Tool/Diagramm-Cross-Pollination Guard (B2-Aspekt)
+- Commit `51ce91e` — Edge create/delete fuer BPMN + Landscape (B3/B4)
+- Commit `05f953e` — ERD `normalizeRelations` (B3-Vorbereitung)
+- Commit `d61345a` — ERD-Tabellen-Rename (E2.5.1-Vorbereitung)
 - Commit `aaa9cd0` — v1.1.2 Release Open-Items-Sweep
+- Commit `548b891` — Pfad-D-Brainstorm
