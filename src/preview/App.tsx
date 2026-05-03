@@ -56,6 +56,7 @@ import { LandscapeSchema } from '../landscape/schema.js';
 import { applyErdTableUpdate, applyLandscapeNodeUpdate } from './node-update.js';
 import { normalizeRelations } from './normalize-relations.js';
 import { clientToFlowPosition } from './lib/coords.js';
+import { assertNever } from './lib/exhaustive.js';
 
 // Stable references
 const erdNodeTypes = { table: TableNode };
@@ -1283,6 +1284,7 @@ function EditorShell({
 // `tables` key into the BPMN source on the next click-to-place / drop.
 function isToolValidForDiagram(diagramType: 'bpmn' | 'erd' | 'landscape' | null, tool: Tool): boolean {
   if (tool === 'pointer' || tool === 'pan') return true;
+  if (diagramType === null) return false;
   switch (diagramType) {
     case 'bpmn':
       return tool === 'start-event' || tool === 'end-event' || tool === 'task' || tool === 'gateway';
@@ -1291,7 +1293,7 @@ function isToolValidForDiagram(diagramType: 'bpmn' | 'erd' | 'landscape' | null,
     case 'landscape':
       return tool.startsWith('lc-');
     default:
-      return false;
+      return assertNever(diagramType, 'isToolValidForDiagram');
   }
 }
 
@@ -1305,6 +1307,8 @@ function typePrefix(type: 'start-event' | 'end-event' | 'task' | 'gateway'): str
       return 'task';
     case 'gateway':
       return 'gateway';
+    default:
+      return assertNever(type, 'typePrefix');
   }
 }
 
@@ -1318,6 +1322,8 @@ function defaultLabel(type: 'start-event' | 'end-event' | 'task' | 'gateway'): s
       return 'Neuer Task';
     case 'gateway':
       return 'Entscheidung?';
+    default:
+      return assertNever(type, 'defaultLabel');
   }
 }
 
@@ -1334,6 +1340,8 @@ function landscapeDefaultLabel(kind: 'person' | 'system' | 'external' | 'contain
       return 'Container';
     case 'database':
       return 'Datenbank';
+    default:
+      return assertNever(kind, 'landscapeDefaultLabel');
   }
 }
 
