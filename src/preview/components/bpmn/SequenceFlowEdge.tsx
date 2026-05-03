@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  BaseEdge,
   getSmoothStepPath,
   EdgeLabelRenderer,
   type EdgeProps,
@@ -32,12 +33,14 @@ export function SequenceFlowEdge({
 
   return (
     <>
-      <path
+      {/* B4 (2026-05-03): BaseEdge statt nacktem path → bekommt interaction-Path
+          fuer klickbare Hitbox. Ohne BaseEdge war Edge-Click bei BPMN unmoeglich. */}
+      <BaseEdge
         id={id}
-        className="react-flow__edge-path"
-        d={edgePath}
+        path={edgePath}
         style={style}
         markerEnd="url(#arrow)"
+        interactionWidth={40}
       />
       {data?.label && (
         <EdgeLabelRenderer>

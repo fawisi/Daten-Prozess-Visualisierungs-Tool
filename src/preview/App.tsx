@@ -75,6 +75,10 @@ const landscapeEdgeTypes = { landscapeRelation: LandscapeRelationEdge };
 const defaultEdgeOptions = {
   type: 'smoothstep' as const,
   style: { stroke: 'var(--edge-stroke)', strokeWidth: 1.5 },
+  // B4 (2026-05-03): Touch-Hitbox vergroessert (xyflow-Default 20).
+  // Mit 40px ist Edge-Klick fuer Backspace/Delete auch auf iPad zuverlaessig.
+  // Plan-Anhang E2.B4.
+  interactionWidth: 40,
 };
 
 interface CanvasHandles {
