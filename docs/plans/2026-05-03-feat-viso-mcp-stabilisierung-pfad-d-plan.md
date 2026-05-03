@@ -13,31 +13,38 @@ branch_implementation: feat/v1.2-stabilization-d
 
 ## Enhancement Summary
 
-**Deepened on:** 2026-05-03
-**Sections enhanced:** alle 6 Etappen + Risk + Documentation Plan
-**Research agents used:** Architecture-Strategist, Performance-Oracle, Best-Practices-Researcher, Code-Simplicity-Reviewer, Julik-Frontend-Races, Kieran-TypeScript, Learnings-Researcher, Framework-Docs-Researcher (React Flow 12), Explore (Code-Locations)
+**Deepened on:** 2026-05-03 (zwei Runden, 13 Research-Agents total)
+**Sections enhanced:** alle Etappen + Risk + Documentation Plan + neue "Schutzgeruest"-Sektion
+**Research agents used:**
+- **Runde 1 (Plan-Architektur):** Architecture-Strategist, Performance-Oracle, Best-Practices-Researcher, Code-Simplicity-Reviewer, Julik-Frontend-Races, Kieran-TypeScript, Learnings-Researcher, Framework-Docs-Researcher (React Flow 12), Explore (Code-Locations)
+- **Runde 2 (Operational-Tiefe):** Repo-Research-Analyst (Multi-Provider-Audit), Julik-Frontend-Races (Vitest-Setup + useRef-Migration), Best-Practices-Researcher (E1-Operational-Playbook), Kieran-TypeScript (Schutzgeruest-Paket Lefthook+Sentinels)
 
 ### Key Improvements (was hat sich gegenueber v1 geaendert)
 
-1. **Etappen-Reihenfolge umgestellt:** E3 (Backlog-Sweep) nach E4 (Daily-Use) verschoben — Real-Findings priorisieren Polish-Items, sonst Sunk-Cost-Risiko (Architecture-Review).
-2. **E6 als eigene Phase gestrichen.** Hub-Frage wird zu einem Trigger-Punkt _nach_ E5, kein Etappen-Schritt — eigenes Brainstorm + eigener Plan (Simplicity-Review).
-3. **B1-Fix konkretisiert:** `screenToFlowPosition` aus `useReactFlow()` muss innerhalb der Canvas-Komponenten sitzen (nicht in App.tsx). Coordinate-Transform-Helper als reine Funktion in `src/preview/lib/coords.ts` extrahiert. Pure-Function-Test + Playwright-Smoke statt jsdom-NaN-Hell (Kieran + Framework-Docs).
-4. **B2-Hypothese geschaerft:** Top-Verdacht ist `data-viso-canvas-pane`-Selector-Stale beim Tab-Wechsel — Drop landet `null`-silent. Fix via `useRef` statt `querySelector` (Julik-Races).
-5. **E3.2 Auto-Layout vereinfacht:** Web Worker (Loesung A) komplett gestrichen aus aktiver Phase. Stattdessen: Hash-basiertes Layout-Caching + `requestIdleCallback` + Manual-Button. ELK-Config `thoroughness:1` statt 7 bringt 3-5× Speedup (Performance-Oracle).
-6. **Exhaustive-Switch-Refactor neu in E2.5:** 4 nicht-erschoepfende switches in `App.tsx` (Z. 1252, 1265, 1278, 1292) auf `assertNever` umstellen — sonst bricht ein 4. Diagrammtyp stumm (Kieran).
-7. **`EditableReactFlow`-Wrapper mit Generics + Pre-Commit-Hook in E2.B4:** das Solution-Doc-Pattern hatte Generics-Bug, jetzt korrekt typisiert. Pre-Commit-grep verhindert Direkt-`<ReactFlow>`-Imports in Canvas-Komponenten.
-8. **Indikator 2 quantifiziert:** "0 neue usage-log-Eintraege bei mindestens 3 Daily-Use-Sessions in 7 Tagen" statt "praktisch 0" (Architecture).
-9. **Pro-Bug-Sub-Branches** statt Long-Lived-Stabilization-Branch: `fix/B1-drop-position`, `fix/B2-tab-switch`, etc., alle gegen `feat/v1.2-stabilization-d` (Architecture).
-10. **`hub-relevant`-Tag in usage-log** als Pre-Material fuer das Hub-Brainstorm — E6-Folge-Plan startet nicht von Null (Architecture).
+1. **Etappen-Reihenfolge umgestellt:** E3 (Backlog-Sweep) nach E4 (Daily-Use) verschoben — Real-Findings priorisieren Polish-Items, sonst Sunk-Cost-Risiko.
+2. **E6 als eigene Phase gestrichen.** Hub-Frage wird zu einem Trigger-Punkt _nach_ E5, kein Etappen-Schritt.
+3. **B1-Fix konkretisiert:** Refactor-Reihenfolge in 4 Schritten (Provider mounten → Pure-Helper → Canvases umbauen → Spawn-Pfad). Code-Audit hat bestaetigt: aktuell EXISTIERT NICHT EIN EINZIGER `<ReactFlowProvider>` im Repo. Auto-Provider-Modus laeuft, `useReactFlow()` wird nirgends genutzt — der Bug ist also kein Versehen, sondern strukturell durch das Hook-Pattern blockiert.
+4. **B2-Hypothese geschaerft + Implementierungs-Plan:** Top-Verdacht ist `data-viso-canvas-pane`-Selector-Stale + Tool-Reset feuert nur bei *ungueltigem* Tool (Wechsel zwischen 2 ERDs ueberlebt es). Fix in 3 Schritten (H3 Tool-Reset eine Zeile, H2+H1 zusammen via useRef + permanent Listener), Prod-Build-Repro VOR Code zur H6-Disambiguation.
+5. **E3.2 Auto-Layout vereinfacht:** Web Worker komplett gestrichen. Hash-basiertes Caching + `requestIdleCallback` + Manual-Button + ELK-Config `thoroughness:1`.
+6. **Schutzgeruest-Paket neu strukturiert (E2.5+):** Lefthook (nicht Husky), `assertNever`-Helper, `EditableReactFlow`-Wrapper, TS-Strict-Flags, Minimal-ESLint — als priorisiertes Paket mit Aufwand/Impact pro Item.
+7. **`EditableReactFlow`-Wrapper mit Generics:** korrekt typisiert `<N extends Node, E extends Edge>`. Pre-Commit-grep ueber Lefthook.
+8. **Indikator 2 quantifiziert:** "0 neue usage-log-Eintraege bei mindestens 3 Daily-Use-Sessions in 7 Tagen".
+9. **Pro-Bug-Sub-Branches** statt Long-Lived-Stabilization-Branch.
+10. **`hub-relevant`-Tag in usage-log** als Pre-Material fuer das Hub-Brainstorm.
+11. **E1-Operational-Playbook:** 7 konkrete Console-Log-Stellen mit `// E1-DEBUG`-Marker, Stale-Build-Bash-Oneliner, DevTools-Inspection-Skript, Triage-Matrix fuer 4 E1.3-Outcomes, Chrome DevTools "Recorder"-Tab statt Playwright im E1-Scope.
+12. **Test-Infrastruktur-Lage geklaert:** Repo hat KEIN jsdom, KEIN @testing-library/react (vitest matcht nur `.test.ts`). Empfehlung: Hook-isolierte Tests fuer E2.B2 (createSpawnHandler als reine Funktion), volles jsdom-Setup erst spaeter.
 
-### New Considerations Discovered
+### New Considerations Discovered (Runde 2)
 
-- **3 ReactFlowProvider-Instanzen Pflicht.** xyflow Issue #5689: Multiple `<ReactFlow>` unter EINEM Provider verursacht Knoten-Jitter. viso-mcp hat 3 Canvases, jeder braucht seinen eigenen Provider. Wenn aktuell nur 1 Provider lebt: das ist ein eigener Bug-Vector neben B1.
+- **Es gibt aktuell ZERO ReactFlowProvider im Source.** `grep` liefert null Treffer. Drei `<ReactFlow>`-Instanzen laufen im Auto-Provider-Modus — drei separate Provider-Bubbles. Der Kommentar in `App.tsx:286-289` belegt: bewusst akzeptiert. Refactor muss Provider erst einfuehren.
+- **`useReactFlow()` wird NIRGENDS aufgerufen.** Auch null Treffer. Die `bounds.left`-Math ist also nicht ein vergessener Migrations-Schritt, sondern der akzeptierte Workaround.
+- **Migrations-Pflicht fuer Sidecars.** Bestehende `*.pos.json`-Files haben Pane-Pixel-Positionen gespeichert (alte Math). Nach `screenToFlowPosition`-Fix werden Knoten "verschoben" wirken — Migrations-Hinweis ans Source-File-Format anhaengen.
+- **`handlePaneClick`-Code triplikat.** `App.tsx:180-190, 283-297, 401-411` — drei mal das gleiche `evt.clientX - bounds.left` in den Canvas-Branches. App.tsx hat 1364 Zeilen — der Coordinate-Refactor ist die Gelegenheit fuer Split in 3 separate Canvas-Komponenten (ErdCanvas/BpmnCanvas/LandscapeCanvas).
+- **Tool-Reset-Effect existiert bereits, aber unvollstaendig.** `App.tsx:508-512` resettet Tool nur bei *ungueltigem* Tool fuer neuen Diagrammtyp. Wechsel zwischen 2 ERDs oder 2 BPMNs ueberlebt das Tool — und genau das ist der wahrscheinlichste B2-Pfad.
 - **Stale-Build ist tatsaechlich vorhanden.** `dist/server.cjs` (22.04.) ist aelter als `src/preview/App.tsx` (26.04.). E1.0 wird 80% der Faelle aufloesen.
-- **Custom-Edges haben `interactionWidth` nicht gesetzt** (Default 20px) — fuer Touch zu klein, Empfehlung: 40px (B4-Hitbox).
-- **Touch-Empfehlungen pro xyflow v12:** `connectionRadius: 30-40` (Default 20), `touch-action: none` auf `.react-flow__pane`.
-- **`spawn-listener.test.tsx` existiert nicht** (im Solution-Doc als Vitest-Vorschlag empfohlen, aber nicht implementiert). Test-Luecke fuer B2-Coverage.
-- **B1 betrifft beide Pfade gleich:** Drag-Drop _und_ Click-to-Place (`paneClick` in `App.tsx:180-190`) nutzen identische `getBoundingClientRect`-Math. Fix muss BEIDE adressieren.
+- **Custom-Edges haben `interactionWidth` nicht gesetzt** (Default 20px) — Empfehlung: 40px.
+- **vitest.config.ts matcht nur `.test.ts`** (kein `.tsx`). Setup-Aufwand: vitest.config + jsdom + Testing-Library + tsconfig-JSX-Mirroring.
+- **Pointer-Capture-Audit ergaenzt:** Wenn `usePaletteDrag.ts` `setPointerCapture` nutzt + Tab-Wechsel mid-drag → Pointer-Up landet im Nirvana. Pruefen vor B2-Fix.
 
 ---
 
@@ -668,6 +675,368 @@ nicht Etappe dieses Stabilisierungsplans.
 
 Compound-Engineering-Lessons via `compound-engineering:workflows:compound`
 am Phasen-Ende — kein eigener Doc-Slot, sondern Trigger.
+
+---
+
+## Operational Appendix (Tier-2-Vertiefung)
+
+Nach 13 parallelen Research-Agents in 2 Runden hier die ausfuehrungsfertigen
+Operational-Details. Jede Sub-Sektion ist eigenstaendig nutzbar.
+
+### Anhang A — E1 Live-Repro Operational Playbook
+
+#### A.1 Vorbereitungs-Checkliste (vor der Browser-Session)
+
+**7 Console-Logs einbauen mit `// E1-DEBUG`-Marker (vor `git checkout` revertierbar):**
+
+| Datei | Zeile | Was loggen | Liefert |
+|---|---|---|---|
+| `usePaletteDrag.ts` | vor `dispatchSpawn` (~Z. 100) | `toolType, e.clientX, e.clientY, dropzone?.dataset.visoCanvasPane, document.querySelectorAll('[data-viso-canvas-pane]').length` | B1 (Pixel-Input) + B2 (Pane-Treffer/Miss + Mehrfach-Treffer) |
+| `usePaletteDrag.ts` | `useSpawnListener.handler` (Z. 138) | `detail, enabled, performance.now()` | B2 (Listener-aktiv-Status, Race-Detection) |
+| `useDiagramSync.ts` | Z. 224 (`onConnect`), Z. 255 (`onEdgesDelete`) | `params, diagramType` | B3/B4 fuer ERD |
+| `useProcessSync.ts` | Z. 211, 230 | analog | B3/B4 fuer BPMN |
+| `useLandscapeSync.ts` | Z. 214, 236 | analog | B3/B4 fuer Landscape |
+
+**Revert nach E1.3:** `git diff` auf `// E1-DEBUG`-Marker, `git checkout -- <files>`.
+
+**DevTools-Setup (im SEPARATEN Fenster, nicht docked — sonst FPS-Drop):**
+
+- Settings > Preferences > Show rulers on hover
+- More tools > Rendering: "Highlight pointer events" + "Frame Rendering Stats" + "Layer borders"
+- Network: "Disable cache" aktivieren
+- Console: "Preserve log" aktivieren
+- `Cmd+Shift+P` > "Show frames per second"
+
+**Editor starten — korrekter E1-Pfad:** `npm run build && npx viso-mcp serve`
+(genau das, was Fabian taeglich macht — `vite preview` waere blind fuer Stale-Build).
+Build-Hash via `git rev-parse --short HEAD` notieren.
+
+#### A.2 Stale-Build-Disambiguation (5-Sekunden-Bash-Oneliner)
+
+```bash
+[ "$(stat -f %m src/preview/App.tsx)" -gt "$(stat -f %m dist/server.cjs)" ] \
+  && echo "STALE: npm run build erforderlich" || echo "FRESH"
+```
+
+#### A.3 Repro-Skript pro Bug
+
+**B1 — Pixel-Offset quantifizieren:**
+- Pro Diagrammtyp + Zoom-Level (100/50%/post-Pan): Tool dragen
+- `event.clientX/Y` aus E1-DEBUG-Log ablesen
+- Knoten-Position via Console: `window.__REACT_FLOW_INSTANCE__?.getNodes()` (oder via React DevTools)
+- Differenz berechnen, plus `getViewport().zoom` und `getViewport().x/y` mit-loggen
+
+**B2 — Tab-Wechsel-Race:**
+- Sequenz `BPMN auswaehlen → ERD-Tab → drag-drop` 10× wiederholen, Treffer/Miss zaehlen → Frequency
+- Console-Log zeigt: `dropzone === null`? `pane-Elemente.length > 1`? `enabled === false beim Spawn`?
+
+**B3 — Edges:**
+- ERD: 2 Tabellen, Spalte→Spalte ziehen. `git diff` auf `schema.erd.json`: Eintrag in `relations[]` neu?
+- Mit Notion-Pipeline-File wiederholen (Legacy-Format)
+
+**B4 — Edges loeschen:**
+- Edge anklicken — `selectedEdges.length > 0`? `interactionWidth` der Custom-Edges via Elements-Tab inspizieren
+- Backspace/Delete — `onEdgesDelete`-Log feuert?
+- Hitbox-Test: 5 Klicks an unterschiedlichen Edge-Positionen
+
+#### A.4 Recorder statt Playwright im E1-Scope
+
+**Empfehlung: Chrome DevTools "Recorder"-Tab** (built-in). `Cmd+Shift+P` > "Show Recorder", Session aufnehmen, als JSON speichern. Reicht fuer Frame-by-Frame-Review. Playwright-Setup kostet ~1h, lohnt erst bei E2-E5.
+
+#### A.5 Triage-Matrix nach E1.3
+
+| Outcome | Naechster Plan-Schritt |
+|---|---|
+| Alle 4 = stale | E2.0-Sentinel sofort, danach direkt E2.5 + E4 (B1 wahrscheinlich auch erschlagen) |
+| B1 offen, Rest stale | E2.B1 startet (Sub-Branch), E2.0 parallel |
+| Edge-Case (z.B. nur Legacy-Notion-File bricht B3) | Solution-Doc um Edge-Case-Sektion + Fix als Sub-Task in E2 |
+| `hub-relevant`-Tag gesetzt | Pre-Material-Liste fuer Hub-Brainstorm — kein E2-Aufwand |
+
+---
+
+### Anhang B — E2.B1 Coordinate-Transform-Unification (Refactor in 4 Schritten)
+
+#### B.1 Audit-Befund (kritisch)
+
+**Es gibt aktuell ZERO `<ReactFlowProvider>` im Source-Code.** Drei
+`<ReactFlow>`-Instanzen laufen im Auto-Provider-Modus → drei separate
+Provider-Bubbles. `useReactFlow()` wird **nirgends** aufgerufen. Der
+Kommentar in `App.tsx:286-289` belegt: bewusst akzeptierter Workaround.
+
+#### B.2 Refactor-Reihenfolge
+
+**Schritt 1 — Provider mounten (2 Zeilen):**
+- `<ReactFlowProvider>` in `VisoEditor.tsx:85-108` um den Editor-Shell
+- ODER direkt in `EditorShell` (App.tsx ab Z. 469)
+
+**Schritt 2 — Pure Helper anlegen:**
+- Datei: `src/preview/lib/coords.ts` neu
+- Signature: `clientToFlowPosition(clientPos, paneRect, viewport): {x, y}`
+- Formel: `flowX = (clientX - paneRect.left - viewport.x) / viewport.zoom`
+- Tests in `src/preview/lib/coords.test.ts`: Identitaet (zoom=1, pan=0,0), Pan-Only, Zoom-Only, Pan+Zoom, numerische Stabilitaet bei zoom=0.1
+- Mehrwert: testbar ohne React-Context (jsdom-NaN-Hell vermieden)
+
+**Schritt 3 — Canvas-Komponenten anfassen (3 Stellen):**
+- `App.tsx:180-190` (ErdCanvas), `:283-297` (BpmnCanvas), `:401-411` (LandscapeCanvas)
+- Jede Komponente: `const { screenToFlowPosition } = useReactFlow()` ergaenzen
+- `bounds.left/top`-Hack ersetzen durch `screenToFlowPosition({x: evt.clientX, y: evt.clientY})`
+
+**Schritt 4 — handleSpawnFromPointer:**
+- `App.tsx:1098-1112` — entweder via neuer `CanvasHandles.screenToFlow`-Methode (Type erweitern in Z. 76-88) oder direkt im EditorShell (geht erst nach Schritt 1)
+- Existierender Kommentar Z. 286-289 entfernen
+
+#### B.3 Side-Effect-Audit
+
+| Pfad | Risk | Begruendung |
+|---|---|---|
+| MCP-Tools (`process_add_node`, `diagram_create_table`, `landscape_add_node`) | **null** | Nehmen kein x/y-Input; Positionen via Auto-Layout |
+| `usePaletteDrag.ts:53-100` (Drag-DnD) | **MUSS mitziehen** | Sonst Click-to-Place korrekt aber Drop bleibt verzerrt → neuer Inkonsistenz-Bug |
+| Auto-Layout-Pfad | **null** | Arbeitet komplett in Flow-Coords |
+| `persistPosition` (Sidecar) | **Migrations-Hinweis** | Bestehende `*.pos.json` haben falsche (Pane-Pixel-)Werte. Nach Fix wirken Knoten "verschoben" → Migration-Note ans Format anhaengen |
+
+#### B.4 App.tsx-Split-Empfehlung (kombinieren mit Refactor)
+
+App.tsx hat 1364 Zeilen. Die 3 dupliziertem `handlePaneClick`-Closures
+sind ein Code-Smell. Refactor-Gelegenheit: Split in
+`src/preview/components/canvases/{ErdCanvas,BpmnCanvas,LandscapeCanvas}.tsx`.
+Nicht zwingend in E2.B1, aber sinnvoll waehrend man eh dabei ist.
+
+---
+
+### Anhang C — E2.B2 Race-Conditions (Implementierungs-Plan)
+
+#### C.1 Empfohlene Reihenfolge
+
+1. **Prod-Build-Test ZUERST** (vor Code) — Repro im `npm run build && npx serve dist/` im Inkognito-Tab. Wenn Bug auch hier auftritt: H6 (Strict-Mode-Double-Mount) raus, H1/H2/H3 bleiben.
+2. **H3-Fix (1 Zeile, 50% der Symptome)** — `App.tsx:508-512` resettet Tool nur bei *ungueltigem* Tool. Verschaerfen auf jeden Tab-Wechsel:
+
+```ts
+useEffect(() => {
+  setActiveTool('pointer');
+}, [activeTab, setActiveTool]);
+```
+
+Alten Effect Z. 508-512 loeschen (Validity-Check obsolet).
+
+3. **H2 + H1 zusammen** — useRef + Listener-permanent in einem Rutsch.
+
+#### C.2 useRef-Migration (H2-Fix, Plain Language)
+
+- `paneRef = useRef<HTMLDivElement | null>(null)` in App.tsx
+- Pane-divs (App.tsx:193, 300, 414) bekommen `ref={(el) => { paneRef.current = el; }}` (Callback-Ref reicht — kein `forwardRef` noetig)
+- `handleSpawnFromPointer` (Z. 1106): `paneRef.current` statt `document.querySelector(...)`
+- `data-viso-canvas-pane`-Marker bleibt fuer DevTools/E2E-Selectors, wird aber nicht mehr gelesen
+
+**Race-Detail (Doku-Pflicht):** Wenn jemand spaeter alle 3 Panes
+parallel mountet (`display:none`-Tabs), zeigen alle 3 Refs nacheinander
+auf ihr Element und ueberschreiben sich → wieder kaputt. Code-Kommentar:
+"Pane wird nur gemounted wenn aktiver Tab — Ref-Strategie haengt davon ab".
+
+#### C.3 Listener-permanent-Pattern (H1-Fix)
+
+```ts
+export function useSpawnListener({ onSpawn, enabled }: UseSpawnListenerOptions) {
+  const onSpawnRef = useRef(onSpawn);
+  const enabledRef = useRef(enabled);
+
+  useEffect(() => { onSpawnRef.current = onSpawn; }, [onSpawn]);
+  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
+
+  useEffect(() => {
+    function handler(e: Event) {
+      if (!enabledRef.current) return;
+      const detail = (e as CustomEvent<SpawnEventDetail>).detail;
+      if (!detail) return;
+      onSpawnRef.current(detail.type, { x: detail.clientX, y: detail.clientY });
+    }
+    window.addEventListener('viso-spawn-node', handler as EventListener);
+    return () => window.removeEventListener('viso-spawn-node', handler as EventListener);
+  }, []); // <-- leer, exakt einmal
+}
+```
+
+Plain Language: Listener wird genau einmal beim Mount registriert,
+einmal beim Unmount entfernt. Aktuelle Logik wird ueber Refs gelesen,
+die immer den neuesten Stand haben.
+
+#### C.4 Zusaetzliche Audits (vor Code)
+
+- **Pointer-Capture-Check in `usePaletteDrag.ts`:** Wird `setPointerCapture` genutzt? Wenn ja: Tab-Wechsel mid-drag = Pointer-Up-Event ins Nirvana. Fix: `releasePointerCapture` im Tab-Wechsel-Effect ergaenzen.
+- **Lazy-Load-Schutz:** Wenn `paneRef.current === null` → silent return + dev-mode `console.warn`
+
+#### C.5 Test-Strategie (Repo hat KEIN jsdom)
+
+**Empfehlung: Hook-isolierte Tests fuer E2.B2:**
+
+Spawn-Handler aus App rausziehen in reine Funktion:
+```ts
+function createSpawnHandler({
+  getPane,        // () => HTMLElement | null
+  addNodeAt,      // (tool, pos) => void
+}) { ... }
+```
+
+Test-Datei: `src/preview/hooks/usePaletteDrag.test.ts` (passt sofort
+in den existierenden `**/*.test.ts`-Glob, kein Setup).
+
+Vitest mit Spies, kein jsdom noetig:
+- H2: Mock `getPane` mit unterschiedlichen `getBoundingClientRect`-Werten
+- H1: Spy auf `addEventListener`/`removeEventListener` — pro Mount EIN add, pro Unmount EIN remove
+- H3: separater Test fuer Tab-Wechsel-Effect
+
+Volles jsdom-Setup (`@testing-library/react`) erst spaeter, wenn E2.B3+
+mehr DOM-Tests braucht.
+
+---
+
+### Anhang D — Schutzgeruest-Paket (Lefthook + Sentinels)
+
+#### D.1 Priorisierung
+
+| # | Item | Aufwand | Impact | Wann |
+|---|---|---|---|---|
+| 1 | `assertNever` + 4 switches | XS (~30 min) | mid | E2.5.2 |
+| 2 | `EditableReactFlow` + 3 App.tsx-Migrations | S (~2h) | high | E2.B4 |
+| 3 | Lefthook + grep + freshness | S (~2h) | high | E2.0 |
+| 4 | CI-Erweiterung | XS (~30 min) | high | E2.0 |
+| 5 | TS-Flag `noUncheckedIndexedAccess` | M (~4h) | high | nach E2 |
+| 6 | Minimal-ESLint | S (~2h) | mid | nach E2 |
+
+#### D.2 Lefthook (statt Husky)
+
+**Begruendung:** viso-mcp hat kein bestehendes Husky-Setup → freie Wahl.
+Lefthook hat eingebautes Glob-Filtering, parallele Jobs, eine YAML.
+
+**Datei:** `lefthook.yml` im Repo-Root
+
+```yaml
+pre-commit:
+  parallel: true
+  commands:
+    grep-direct-reactflow:
+      glob: "src/preview/**/*.{ts,tsx}"
+      exclude: "src/preview/components/canvases/EditableReactFlow.tsx"
+      run: |
+        if grep -nE "from '@xyflow/react'" {staged_files} | grep -E "ReactFlow[^a-zA-Z]" ; then
+          echo "Direkt-Import von <ReactFlow> verboten — nutze EditableReactFlow-Wrapper."
+          exit 1
+        fi
+    typecheck:
+      run: npm run typecheck
+    test-affected:
+      glob: "src/**/*.{ts,tsx}"
+      run: npx vitest related --run {staged_files}
+
+pre-push:
+  commands:
+    build-freshness:
+      run: |
+        if [ -d dist ] && [ "$(find src -newer dist -type f | head -1)" ]; then
+          echo "Stale build: src ist neuer als dist. Bitte 'npm run build' ausfuehren."
+          exit 1
+        fi
+    full-test:
+      run: npm test
+```
+
+**Setup:** `npm i -D lefthook && npx lefthook install`.
+
+#### D.3 CI-Pendant (`.github/workflows/ci.yml`-Erweiterung)
+
+```yaml
+- name: Build-Freshness Sentinel
+  run: |
+    npm run build
+    if [ "$(find src -newer dist -type f | head -1)" ]; then
+      echo "Build inkonsistent: src neuer als frisch gebauter dist."
+      exit 1
+    fi
+
+- name: Grep-Guard ReactFlow direct imports
+  run: |
+    if grep -rnE "from '@xyflow/react'" src/preview --include="*.tsx" --include="*.ts" \
+        | grep -E "ReactFlow[^a-zA-Z]" \
+        | grep -v "EditableReactFlow.tsx" ; then
+      echo "Direkt-Imports gefunden."
+      exit 1
+    fi
+```
+
+**Lokal vs CI:** Lokal = schnelles Feedback. CI = Safety Net (Hooks via `--no-verify` umgehbar).
+
+#### D.4 `assertNever`-Helper
+
+**Datei:** `src/preview/lib/exhaustive.ts`
+
+```ts
+export function assertNever(value: never, context?: string): never {
+  throw new Error(
+    `Unhandled discriminant${context ? ` in ${context}` : ''}: ${JSON.stringify(value)}`,
+  );
+}
+```
+
+**Wirksam durch:** TS-`strict: true` (bereits gesetzt). `never`-Parameter
+zwingt nicht-erschoepfende Switches zum Compile-Fehler. Kein Test fuer
+den Helper selbst — Korrektheit ist Typ-Eigenschaft.
+
+**Migrations-Stellen:** `App.tsx:1252, 1265, 1278, 1292`.
+
+#### D.5 `EditableReactFlow`-Wrapper
+
+**Datei:** `src/preview/components/canvases/EditableReactFlow.tsx`
+
+```tsx
+import { ReactFlow, type ReactFlowProps, type Node, type Edge } from '@xyflow/react';
+
+type RequiredEditable<N extends Node, E extends Edge> =
+  ReactFlowProps<N, E> & Required<Pick<
+    ReactFlowProps<N, E>,
+    'onNodesChange' | 'onEdgesChange' | 'onConnect' | 'onEdgesDelete'
+  >>;
+
+export function EditableReactFlow<N extends Node = Node, E extends Edge = Edge>(
+  props: RequiredEditable<N, E>
+) {
+  return <ReactFlow<N, E> {...props} />;
+}
+```
+
+**Migrations-Stellen:** `App.tsx:194` (ERD), `:301` (BPMN), `:415` (Landscape).
+
+#### D.6 TS-Strict-Audit
+
+Aktuell gesetzt: `strict: true` (8 Flags). Empfohlene Ergaenzungen:
+
+| Flag | Aufwand | Impact | Schutz |
+|---|---|---|---|
+| `noUncheckedIndexedAccess: true` | M | high | `array[i]` als `T \| undefined` |
+| `exactOptionalPropertyTypes: true` | M | mid | `prop?: T` darf nicht explizit `undefined` sein |
+| `noFallthroughCasesInSwitch: true` | XS | mid | Switch-Fallthrough = Compile-Error |
+| `noImplicitOverride: true` | XS | low | OO-Sicherheit |
+
+#### D.7 Minimal-ESLint (4 Rules)
+
+`eslint.config.js` Flat-Config:
+- `@typescript-eslint/switch-exhaustiveness-check: error` — ESLint-Pendant zu `assertNever`, Belt-and-Suspenders
+- `react-hooks/exhaustive-deps: error` — direkt relevant fuer Sync-Hooks
+- `react-hooks/rules-of-hooks: error`
+- `@typescript-eslint/no-explicit-any: warn`
+
+#### D.8 Mit-Reichweite
+
+**Strukturell unmoeglich nach Schutzgeruest:**
+- Stale-Build-Bugs (Pfad-D-Hauptthema)
+- Direkt-Import-Cross-Pollination
+- Nicht-erschoepfende Diagramm-Type-Switches
+- Undefinierte Array-Zugriffe (mit `noUncheckedIndexedAccess`)
+- Stale Hook-Closures (ESLint `exhaustive-deps`)
+
+**Bleibt ungeschuetzt:**
+- Race Conditions in async Sync-Hooks → braucht Tests/Locks
+- Layout-Bugs (ELK, Positionierung) → braucht Visual-Regression
+- MCP-Tool-Drift (Server vs UI Schema) → braucht Contract-Tests
+- React-Re-Render-Performance → braucht React DevTools Profiler
 
 ---
 
