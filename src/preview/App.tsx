@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   BackgroundVariant,
   MiniMap,
   Controls,
+  useReactFlow,
 } from '@xyflow/react';
 import type { Node, NodeMouseHandler } from '@xyflow/react';
 import { TooltipProvider } from '@/components/ui/tooltip.js';
@@ -53,6 +55,8 @@ import { DiagramSchema } from '../schema.js';
 import { LandscapeSchema } from '../landscape/schema.js';
 import { applyErdTableUpdate, applyLandscapeNodeUpdate } from './node-update.js';
 import { normalizeRelations } from './normalize-relations.js';
+import { clientToFlowPosition } from './lib/coords.js';
+import { assertNever } from './lib/exhaustive.js';
 
 // Stable references
 const erdNodeTypes = { table: TableNode };
@@ -71,6 +75,10 @@ const landscapeEdgeTypes = { landscapeRelation: LandscapeRelationEdge };
 const defaultEdgeOptions = {
   type: 'smoothstep' as const,
   style: { stroke: 'var(--edge-stroke)', strokeWidth: 1.5 },
+  // B4 (2026-05-03): Touch-Hitbox vergroessert (xyflow-Default 20).
+  // Mit 40px ist Edge-Klick fuer Backspace/Delete auch auf iPad zuverlaessig.
+  // Plan-Anhang E2.B4.
+  interactionWidth: 40,
 };
 
 interface CanvasHandles {
@@ -85,6 +93,13 @@ interface CanvasHandles {
   validateSource: (text: string) => { ok: true } | { ok: false; message: string; line?: number };
   language: 'json' | 'dbml';
   sourceTitle: string;
+  /**
+   * Wandelt Browser-Viewport-Pixel (clientX/Y) in ReactFlow-Flow-Coords.
+   * Rechnet Zoom + Pan + Pane-Offset des aktiven Canvas korrekt ein.
+   * Wird genutzt von handleSpawnFromPointer (drag-drop aus Tool-Palette).
+   * B1 fix (2026-05-03).
+   */
+  screenToFlow: (clientPos: { x: number; y: number }) => { x: number; y: number };
 }
 
 function bpmnValidate(text: string): { ok: true } | { ok: false; message: string; line?: number } {
@@ -118,19 +133,32 @@ function erdJsonValidate(text: string): { ok: true } | { ok: false; message: str
   }
 }
 
-function ErdCanvas({
+interface CanvasInnerProps {
+  canvasRef: React.MutableRefObject<CanvasHandles | null>;
+  onSelect: (node: SelectedNode | null) => void;
+  /** v1.1.1 — CR-2/CR-3: Click-to-Place. */
+  onPaneClick?: (flowPos: { x: number; y: number }) => void;
+}
+
+function ErdCanvas(props: CanvasInnerProps) {
+  return (
+    <div className="h-full w-full">
+      <ReactFlowProvider>
+        <ErdCanvasInner {...props} />
+      </ReactFlowProvider>
+    </div>
+  );
+}
+
+function ErdCanvasInner({
   canvasRef,
   onSelect,
   onPaneClick,
-}: {
-  canvasRef: React.MutableRefObject<CanvasHandles | null>;
-  onSelect: (node: SelectedNode | null) => void;
-  /** v1.1.1 — CR-2: Click-to-Place fuer ERD-Tabellen. */
-  onPaneClick?: (flowPos: { x: number; y: number }) => void;
-}) {
+}: CanvasInnerProps) {
   const api = useApiConfig();
   const sync = useDiagramSync();
   const { t } = useI18n();
+  const { screenToFlowPosition } = useReactFlow();
   const { nodes, edges, status, isEmpty, onNodesChange, onEdgesChange, onConnect, onEdgesDelete } = sync;
 
   useEffect(() => {
@@ -160,8 +188,9 @@ function ErdCanvas({
         if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       },
       validateSource: erdJsonValidate,
+      screenToFlow: (clientPos) => screenToFlowPosition(clientPos),
     };
-  }, [sync, canvasRef, api]);
+  }, [sync, canvasRef, api, screenToFlowPosition]);
 
   const onNodeClick = useCallback<NodeMouseHandler>(
     (_, node) => {
@@ -177,16 +206,16 @@ function ErdCanvas({
 
   // v1.1.1 — CR-2: Click-to-Place. Wenn ein Add-Tool aktiv ist, place
   // bei pane-click; sonst Selection clearen wie bisher.
+  // B1 (2026-05-03): screenToFlowPosition rechnet Zoom + Pan korrekt ein.
   const handlePaneClick = useCallback(
     (evt: React.MouseEvent) => {
       if (onPaneClick) {
-        const bounds = (evt.currentTarget as HTMLElement).getBoundingClientRect();
-        onPaneClick({ x: evt.clientX - bounds.left, y: evt.clientY - bounds.top });
+        onPaneClick(screenToFlowPosition({ x: evt.clientX, y: evt.clientY }));
       } else {
         onSelect(null);
       }
     },
-    [onPaneClick, onSelect]
+    [onPaneClick, onSelect, screenToFlowPosition]
   );
 
   return (
@@ -224,18 +253,25 @@ function ErdCanvas({
   );
 }
 
-function BpmnCanvas({
+function BpmnCanvas(props: CanvasInnerProps) {
+  return (
+    <div className="h-full w-full">
+      <ReactFlowProvider>
+        <BpmnCanvasInner {...props} />
+      </ReactFlowProvider>
+    </div>
+  );
+}
+
+function BpmnCanvasInner({
   canvasRef,
   onSelect,
   onPaneClick,
-}: {
-  canvasRef: React.MutableRefObject<CanvasHandles | null>;
-  onSelect: (node: SelectedNode | null) => void;
-  onPaneClick?: (flowPos: { x: number; y: number }) => void;
-}) {
+}: CanvasInnerProps) {
   const api = useApiConfig();
   const sync = useProcessSync();
   const { t } = useI18n();
+  const { screenToFlowPosition } = useReactFlow();
   const { nodes, edges, status, isEmpty, onNodesChange, onEdgesChange, onConnect, onEdgesDelete } = sync;
 
   useEffect(() => {
@@ -265,8 +301,9 @@ function BpmnCanvas({
         if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       },
       validateSource: bpmnValidate,
+      screenToFlow: (clientPos) => screenToFlowPosition(clientPos),
     };
-  }, [sync, canvasRef, api]);
+  }, [sync, canvasRef, api, screenToFlowPosition]);
 
   const onNodeClick = useCallback<NodeMouseHandler>(
     (_, node) => {
@@ -280,20 +317,16 @@ function BpmnCanvas({
     [onSelect]
   );
 
+  // B1 (2026-05-03): screenToFlowPosition rechnet Zoom + Pan korrekt ein.
   const handlePaneClick = useCallback(
     (evt: React.MouseEvent) => {
       if (onPaneClick) {
-        // ReactFlow does not expose the project helper outside its hook, so
-        // approximate with the raw pane offset. The position writer
-        // overlays ELK / user-placed positions on next load; this is good
-        // enough for a first spawn.
-        const bounds = (evt.currentTarget as HTMLElement).getBoundingClientRect();
-        onPaneClick({ x: evt.clientX - bounds.left, y: evt.clientY - bounds.top });
+        onPaneClick(screenToFlowPosition({ x: evt.clientX, y: evt.clientY }));
       } else {
         onSelect(null);
       }
     },
-    [onPaneClick, onSelect]
+    [onPaneClick, onSelect, screenToFlowPosition]
   );
 
   return (
@@ -338,19 +371,25 @@ function BpmnCanvas({
   );
 }
 
-function LandscapeCanvas({
+function LandscapeCanvas(props: CanvasInnerProps) {
+  return (
+    <div className="h-full w-full">
+      <ReactFlowProvider>
+        <LandscapeCanvasInner {...props} />
+      </ReactFlowProvider>
+    </div>
+  );
+}
+
+function LandscapeCanvasInner({
   canvasRef,
   onSelect,
   onPaneClick,
-}: {
-  canvasRef: React.MutableRefObject<CanvasHandles | null>;
-  onSelect: (node: SelectedNode | null) => void;
-  /** v1.1.1 — CR-3: Click-to-Place fuer Landscape-Knoten. */
-  onPaneClick?: (flowPos: { x: number; y: number }) => void;
-}) {
+}: CanvasInnerProps) {
   const api = useApiConfig();
   const sync = useLandscapeSync();
   const { t } = useI18n();
+  const { screenToFlowPosition } = useReactFlow();
   const { nodes, edges, status, isEmpty, onNodesChange, onEdgesChange, onConnect, onEdgesDelete } = sync;
 
   useEffect(() => {
@@ -382,8 +421,9 @@ function LandscapeCanvas({
         if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       },
       validateSource: landscapeJsonValidate,
+      screenToFlow: (clientPos) => screenToFlowPosition(clientPos),
     };
-  }, [sync, canvasRef, api, nodes]);
+  }, [sync, canvasRef, api, nodes, screenToFlowPosition]);
 
   const onNodeClick = useCallback<NodeMouseHandler>(
     (_, node) => {
@@ -398,16 +438,16 @@ function LandscapeCanvas({
   );
 
   // v1.1.1 — CR-3: Click-to-Place fuer Landscape-Knoten.
+  // B1 (2026-05-03): screenToFlowPosition rechnet Zoom + Pan korrekt ein.
   const handlePaneClick = useCallback(
     (evt: React.MouseEvent) => {
       if (onPaneClick) {
-        const bounds = (evt.currentTarget as HTMLElement).getBoundingClientRect();
-        onPaneClick({ x: evt.clientX - bounds.left, y: evt.clientY - bounds.top });
+        onPaneClick(screenToFlowPosition({ x: evt.clientX, y: evt.clientY }));
       } else {
         onSelect(null);
       }
     },
-    [onPaneClick, onSelect]
+    [onPaneClick, onSelect, screenToFlowPosition]
   );
 
   return (
@@ -498,6 +538,21 @@ function EditorShell({
   useEffect(() => {
     onSelectionChange?.(selectedNode);
   }, [selectedNode, onSelectionChange]);
+
+  // Reset stale shape tools when the active diagram changes — otherwise
+  // picking "Tabelle" in an ERD tab and switching to BPMN would leave
+  // `activeTool='table'` armed, which the cross-pollination guard rejects
+  // but which surfaces to the user as "click does nothing" until they
+  // re-select the cursor.
+  const activeDiagramType = openTabs.find((tab) => tab.path === activeTab)?.type ?? null;
+  // B2 (2026-05-03): Reset Tool bei JEDEM Tab-Wechsel auf 'pointer',
+  // nicht nur bei ungueltigem Tool. Vorheriger Effect ueberlebte das
+  // Tool-State beim Wechsel zwischen 2 Tabs gleichen Typs (2× ERD,
+  // 2× BPMN) — Drag-Drop in zweiten Tab griff dann mit altem Tool.
+  // Plan-Anhang C.2 / docs/usage-log/2026-05-03-bug-repro.md (B2 H3).
+  useEffect(() => {
+    setActiveTool('pointer');
+  }, [activeTab, setActiveTool]);
 
   // Load available files
   useEffect(() => {
@@ -966,6 +1021,15 @@ function EditorShell({
     async (type: Tool, pos: { x: number; y: number }) => {
       if (readOnly) return;
       if (type === 'pointer' || type === 'pan') return;
+      // Cross-pollination guard: refuse spawns whose tool doesn't match the
+      // active diagram. Without this, an ERD `table` tool that survived a
+      // tab switch would write `{ tables: { table_N: ... } }` into the
+      // BPMN source — corrupting the file and breaking subsequent
+      // edge-create / edge-delete round-trips against the same document.
+      if (!activeFile || !isToolValidForDiagram(activeFile.type, type)) {
+        setActiveTool('pointer');
+        return;
+      }
       const handles = canvasRef.current;
       if (!handles) return;
       const raw = await handles.refreshSource();
@@ -1035,7 +1099,7 @@ function EditorShell({
       }
 
       // ===== Landscape (v1.1.1 — CR-3) =====
-      if (type.startsWith('lc-')) {
+      if (type === 'lc-person' || type === 'lc-system' || type === 'lc-external' || type === 'lc-container' || type === 'lc-database') {
         const kind = type.replace('lc-', '') as 'person' | 'system' | 'external' | 'container' | 'database';
         let doc: { nodes: Record<string, Record<string, unknown>>; relations?: unknown[]; format?: string; name?: string };
         try {
@@ -1061,7 +1125,7 @@ function EditorShell({
         return;
       }
     },
-    [readOnly, api, setActiveTool, t]
+    [readOnly, api, setActiveTool, t, activeFile]
   );
 
   const paneClick = useMemo(() => {
@@ -1071,32 +1135,20 @@ function EditorShell({
   }, [activeTool, handleAddNodeAt, readOnly]);
 
   // Palette-to-canvas Pointer-Events drag-and-drop (iPad-safe). Converts
-  // the pointer's client coordinates into canvas-relative positions by
-  // hit-testing the pane's bounding rect, then dispatches the same
-  // handleAddNodeAt path that click-to-place uses.
+  // the pointer's client coordinates into canvas-relative positions via
+  // the active canvas's screenToFlow helper (Zoom + Pan + Pane-Offset
+  // werden korrekt eingerechnet). B1 fix (2026-05-03).
   const handleSpawnFromPointer = useCallback(
     (type: string, clientPos: { x: number; y: number }) => {
       if (readOnly) return;
       if (!diagramType) return;
-      // Each diagram type only accepts its own shape tools — drop a
-      // landscape token onto an ERD pane (or vice versa) is a no-op.
-      let allowed = false;
-      switch (diagramType) {
-        case 'bpmn':
-          allowed = type === 'start-event' || type === 'end-event' || type === 'task' || type === 'gateway';
-          break;
-        case 'erd':
-          allowed = type === 'table';
-          break;
-        case 'landscape':
-          allowed = type.startsWith('lc-');
-          break;
-      }
-      if (!allowed) return;
-      const pane = document.querySelector(`[data-viso-canvas-pane="${diagramType}"]`);
-      if (!pane) return;
-      const rect = pane.getBoundingClientRect();
-      handleAddNodeAt(type as Tool, { x: clientPos.x - rect.left, y: clientPos.y - rect.top });
+      // The cross-pollination guard inside handleAddNodeAt is the
+      // authoritative check; here we just early-out so we don't measure
+      // a pane rect for a drop that would be rejected anyway.
+      if (!isToolValidForDiagram(diagramType, type as Tool)) return;
+      const screenToFlow = canvasRef.current?.screenToFlow;
+      if (!screenToFlow) return;
+      handleAddNodeAt(type as Tool, screenToFlow(clientPos));
     },
     [readOnly, diagramType, handleAddNodeAt]
   );
@@ -1232,6 +1284,26 @@ function EditorShell({
   );
 }
 
+// Hard guard against tool/diagram cross-pollination. ToolPalette filters
+// the visible buttons by diagramType, but `activeTool` lives in the store
+// and survives a tab switch — without this check, choosing "Tabelle" in
+// an ERD tab and then clicking the BPMN tab would still write a
+// `tables` key into the BPMN source on the next click-to-place / drop.
+function isToolValidForDiagram(diagramType: 'bpmn' | 'erd' | 'landscape' | null, tool: Tool): boolean {
+  if (tool === 'pointer' || tool === 'pan') return true;
+  if (diagramType === null) return false;
+  switch (diagramType) {
+    case 'bpmn':
+      return tool === 'start-event' || tool === 'end-event' || tool === 'task' || tool === 'gateway';
+    case 'erd':
+      return tool === 'table';
+    case 'landscape':
+      return tool.startsWith('lc-');
+    default:
+      return assertNever(diagramType, 'isToolValidForDiagram');
+  }
+}
+
 function typePrefix(type: 'start-event' | 'end-event' | 'task' | 'gateway'): string {
   switch (type) {
     case 'start-event':
@@ -1242,6 +1314,8 @@ function typePrefix(type: 'start-event' | 'end-event' | 'task' | 'gateway'): str
       return 'task';
     case 'gateway':
       return 'gateway';
+    default:
+      return assertNever(type, 'typePrefix');
   }
 }
 
@@ -1255,6 +1329,8 @@ function defaultLabel(type: 'start-event' | 'end-event' | 'task' | 'gateway'): s
       return 'Neuer Task';
     case 'gateway':
       return 'Entscheidung?';
+    default:
+      return assertNever(type, 'defaultLabel');
   }
 }
 
@@ -1271,6 +1347,8 @@ function landscapeDefaultLabel(kind: 'person' | 'system' | 'external' | 'contain
       return 'Container';
     case 'database':
       return 'Datenbank';
+    default:
+      return assertNever(kind, 'landscapeDefaultLabel');
   }
 }
 

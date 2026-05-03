@@ -37,7 +37,8 @@ function LandscapeRelationEdgeComponent({
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} style={style} />
+      {/* B4 (2026-05-03): interactionWidth=40 fuer Touch-freundliche Edge-Click-Hitbox */}
+      <BaseEdge id={id} path={edgePath} style={style} interactionWidth={40} />
       {label && (
         <EdgeLabelRenderer>
           <div

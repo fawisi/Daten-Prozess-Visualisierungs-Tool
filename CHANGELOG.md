@@ -6,7 +6,69 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
+### Pfad-D-Stabilisierung (E2)
+
+Bug-driven Fix-Welle aus Pfad-D-Plan
+([docs/plans/2026-05-03-feat-viso-mcp-stabilisierung-pfad-d-plan.md](docs/plans/2026-05-03-feat-viso-mcp-stabilisierung-pfad-d-plan.md)).
+Vorher reproduziert in
+[docs/usage-log/2026-05-03-bug-repro.md](docs/usage-log/2026-05-03-bug-repro.md).
+
+### Fixed
+
+- **B1 — Drag-Drop-Position respektiert Zoom + Pan** (`fix/B1-drop-position`,
+  Commit `51cbc4e`). Vorher landete der Knoten bei Zoom 0.1 mit Offset
+  (-560, -2468) Pixel daneben, weil `clientPos.x - paneRect.left`
+  Viewport-Transform ignorierte. Refactor in 4 Schritten:
+  `<ReactFlowProvider>` um jede Canvas-Komponente, neuer Pure-Helper
+  `src/preview/lib/coords.ts` (testbar ohne React-Context),
+  `useReactFlow().screenToFlowPosition` in 3 Inner-Komponenten,
+  `handleSpawnFromPointer` nutzt `CanvasHandles.screenToFlow` statt
+  `document.querySelector`. Browser-verifiziert: Offset (0, 0).
+- **B2 — Drag-Drop greift nach Tab-Wechsel** (`fix/B2-tab-switch`,
+  Commit `57a6030`). Zwei Hypothesen:
+  - **H3 (Tool-Reset bei jedem Tab-Wechsel):** Vorheriger Effect
+    resettete `activeTool` nur bei *ungueltigem* Tool-Type. Wechsel
+    zwischen 2 Tabs gleichen Diagrammtyps ueberlebte das Tool, Spawn
+    silent-failed. Effect resettet jetzt bei jedem `activeTab`-Wechsel.
+  - **H1 (Permanenter window-Listener):** `useSpawnListener` registrierte
+    Listener bei jeder Dep-Change neu. Pointer-Up-Events konnten
+    zwischen `removeEventListener` und neuem `addEventListener`
+    verloren gehen. Listener ist nun permanent, `onSpawn`/`enabled`
+    werden ueber `useRef`-Slots gelesen.
+  - H2 (Pane-Selector-Stale) implizit gefixt durch B1.
+- **B4 — Edge-Click-Hitbox** (`fix/B4-edges-delete`, Commit `ca22195`).
+  `interactionWidth` der Custom-Edges war xyflow-Default 20px, fuer
+  Touch zu klein. Jetzt 40px in allen 3 Edge-Components
+  (`RelationEdge` ERD, `SequenceFlowEdge` BPMN — vorher gar keine
+  Hitbox weil nacktes `<path>`, jetzt `BaseEdge`-Upgrade —,
+  `LandscapeRelationEdge`). Plus `interactionWidth: 40` in
+  `defaultEdgeOptions`. Edge-Delete-Verhalten selbst kommt erst aus
+  Real-Test in E4 zurueck.
+
+### Refactored
+
+- **Exhaustive-Switch via `assertNever`** (`refactor/E2.5.2-exhaustive-switches`,
+  Commit `96b804c`). 4 Switch-Statements in `App.tsx`
+  (`isToolValidForDiagram`, `typePrefix`, `defaultLabel`,
+  `landscapeDefaultLabel`) auf `assertNever`-Pattern umgestellt. Bei
+  Erweiterung der Tool-/DiagramType-Union bricht TS-Build an genau
+  den Stellen, wo Erweiterung noetig ist. Plan-Anhang D.4. Neuer
+  Helper `src/preview/lib/exhaustive.ts`.
+
+### Added (B1-Vorbereitung)
+
+- **`src/preview/lib/coords.ts`** — Pure-Function-Helper
+  `clientToFlowPosition(client, paneRect, viewport)` mit kanonischer
+  Math-Formel `(clientX - paneRect.left - viewport.x) / viewport.zoom`.
+  9 Vitest-Cases (Identitaet, Pan-Only, Zoom-Only, Pan+Zoom, B1-Real-
+  Daten, numerische Stabilitaet, negative Pan-Werte). Testbar ohne
+  React-Context (jsdom-NaN-Hell vermieden).
+- **`<ReactFlowProvider>`** in jeder Canvas-Komponente. Pflicht laut
+  xyflow Issue #5689 (multiple `<ReactFlow>` unter EINEM Provider =
+  Knoten-Jitter). 3 separate Provider-Bubbles, `useReactFlow()` jeweils
+  in `ErdCanvasInner`/`BpmnCanvasInner`/`LandscapeCanvasInner` aufgerufen.
+
+### Pre-existing (vor Pfad D)
 
 - **ERD-Tabellen-Rename im PropertiesPanel** (B1, Folge-Item aus
   v1.1.2 MA-2). Bei einer Aenderung des "Name"-Felds einer ERD-Tabelle
@@ -15,16 +77,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Schluessel zeigte, mit. Validierung gegen `SafeIdentifier` aus dem
   Schema (`/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`). Trivial-Fall
   (`label === id`), Kollision (Ziel existiert schon) und ungueltige
-  Identifier sind stille no-ops — der Panel zeigt dann weiter den
-  alten Namen, statt den Edit lautlos zu schlucken oder den Doc zu
-  korrumpieren.
+  Identifier sind stille no-ops.
 
 ### Tests
 
-- 310 Tests in 32 Test-Files gruen (vorher 304). +6 Tests in
-  `src/preview/node-update.test.ts` decken Rename-Happy-Path,
-  trivial/collision/invalid/empty no-ops, Relations-Rewrite und einen
-  kombinierten label+description-Batch ab.
+- 325 Tests in 34 Test-Files gruen (vorher 310 in 32). +9 Tests in
+  `src/preview/lib/coords.test.ts` (B1-Coordinate-Helper). +6 Tests
+  bereits in v1.1.3-Vorbereitung in `src/preview/node-update.test.ts`
+  (ERD-Rename).
+
+### Migration
+
+Backwards-compatible. Alle Bestands-API-Kontrakte gueltig.
+
+**Migrations-Hinweis fuer bestehende `*.pos.json`-Sidecars:** Vorher
+gespeicherte Drag-Drop-Positionen waren in Pane-Pixel-Coords (durch
+B1-Bug). Nach dem Fix verwendet das System Flow-Coords. Beim ersten
+Drag-Drop nach Update mit dem alten File koennen Knoten visuell
+"verschoben" wirken, weil die Sidecar-Werte nun anders interpretiert
+werden. Auto-Layout (Klick auf "Auto-Layout" im Header) raeumt das auf.
 
 ## [1.1.2] — 2026-04-26
 
