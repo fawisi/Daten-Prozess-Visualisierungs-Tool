@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   BackgroundVariant,
   MiniMap,
   Controls,
+  useReactFlow,
 } from '@xyflow/react';
 import type { Node, NodeMouseHandler } from '@xyflow/react';
 import { TooltipProvider } from '@/components/ui/tooltip.js';
@@ -53,6 +55,7 @@ import { DiagramSchema } from '../schema.js';
 import { LandscapeSchema } from '../landscape/schema.js';
 import { applyErdTableUpdate, applyLandscapeNodeUpdate } from './node-update.js';
 import { normalizeRelations } from './normalize-relations.js';
+import { clientToFlowPosition } from './lib/coords.js';
 
 // Stable references
 const erdNodeTypes = { table: TableNode };
@@ -85,6 +88,13 @@ interface CanvasHandles {
   validateSource: (text: string) => { ok: true } | { ok: false; message: string; line?: number };
   language: 'json' | 'dbml';
   sourceTitle: string;
+  /**
+   * Wandelt Browser-Viewport-Pixel (clientX/Y) in ReactFlow-Flow-Coords.
+   * Rechnet Zoom + Pan + Pane-Offset des aktiven Canvas korrekt ein.
+   * Wird genutzt von handleSpawnFromPointer (drag-drop aus Tool-Palette).
+   * B1 fix (2026-05-03).
+   */
+  screenToFlow: (clientPos: { x: number; y: number }) => { x: number; y: number };
 }
 
 function bpmnValidate(text: string): { ok: true } | { ok: false; message: string; line?: number } {
@@ -118,19 +128,32 @@ function erdJsonValidate(text: string): { ok: true } | { ok: false; message: str
   }
 }
 
-function ErdCanvas({
+interface CanvasInnerProps {
+  canvasRef: React.MutableRefObject<CanvasHandles | null>;
+  onSelect: (node: SelectedNode | null) => void;
+  /** v1.1.1 — CR-2/CR-3: Click-to-Place. */
+  onPaneClick?: (flowPos: { x: number; y: number }) => void;
+}
+
+function ErdCanvas(props: CanvasInnerProps) {
+  return (
+    <div className="h-full w-full">
+      <ReactFlowProvider>
+        <ErdCanvasInner {...props} />
+      </ReactFlowProvider>
+    </div>
+  );
+}
+
+function ErdCanvasInner({
   canvasRef,
   onSelect,
   onPaneClick,
-}: {
-  canvasRef: React.MutableRefObject<CanvasHandles | null>;
-  onSelect: (node: SelectedNode | null) => void;
-  /** v1.1.1 — CR-2: Click-to-Place fuer ERD-Tabellen. */
-  onPaneClick?: (flowPos: { x: number; y: number }) => void;
-}) {
+}: CanvasInnerProps) {
   const api = useApiConfig();
   const sync = useDiagramSync();
   const { t } = useI18n();
+  const { screenToFlowPosition } = useReactFlow();
   const { nodes, edges, status, isEmpty, onNodesChange, onEdgesChange, onConnect, onEdgesDelete } = sync;
 
   useEffect(() => {
@@ -160,8 +183,9 @@ function ErdCanvas({
         if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       },
       validateSource: erdJsonValidate,
+      screenToFlow: (clientPos) => screenToFlowPosition(clientPos),
     };
-  }, [sync, canvasRef, api]);
+  }, [sync, canvasRef, api, screenToFlowPosition]);
 
   const onNodeClick = useCallback<NodeMouseHandler>(
     (_, node) => {
@@ -177,16 +201,16 @@ function ErdCanvas({
 
   // v1.1.1 — CR-2: Click-to-Place. Wenn ein Add-Tool aktiv ist, place
   // bei pane-click; sonst Selection clearen wie bisher.
+  // B1 (2026-05-03): screenToFlowPosition rechnet Zoom + Pan korrekt ein.
   const handlePaneClick = useCallback(
     (evt: React.MouseEvent) => {
       if (onPaneClick) {
-        const bounds = (evt.currentTarget as HTMLElement).getBoundingClientRect();
-        onPaneClick({ x: evt.clientX - bounds.left, y: evt.clientY - bounds.top });
+        onPaneClick(screenToFlowPosition({ x: evt.clientX, y: evt.clientY }));
       } else {
         onSelect(null);
       }
     },
-    [onPaneClick, onSelect]
+    [onPaneClick, onSelect, screenToFlowPosition]
   );
 
   return (
@@ -224,18 +248,25 @@ function ErdCanvas({
   );
 }
 
-function BpmnCanvas({
+function BpmnCanvas(props: CanvasInnerProps) {
+  return (
+    <div className="h-full w-full">
+      <ReactFlowProvider>
+        <BpmnCanvasInner {...props} />
+      </ReactFlowProvider>
+    </div>
+  );
+}
+
+function BpmnCanvasInner({
   canvasRef,
   onSelect,
   onPaneClick,
-}: {
-  canvasRef: React.MutableRefObject<CanvasHandles | null>;
-  onSelect: (node: SelectedNode | null) => void;
-  onPaneClick?: (flowPos: { x: number; y: number }) => void;
-}) {
+}: CanvasInnerProps) {
   const api = useApiConfig();
   const sync = useProcessSync();
   const { t } = useI18n();
+  const { screenToFlowPosition } = useReactFlow();
   const { nodes, edges, status, isEmpty, onNodesChange, onEdgesChange, onConnect, onEdgesDelete } = sync;
 
   useEffect(() => {
@@ -265,8 +296,9 @@ function BpmnCanvas({
         if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       },
       validateSource: bpmnValidate,
+      screenToFlow: (clientPos) => screenToFlowPosition(clientPos),
     };
-  }, [sync, canvasRef, api]);
+  }, [sync, canvasRef, api, screenToFlowPosition]);
 
   const onNodeClick = useCallback<NodeMouseHandler>(
     (_, node) => {
@@ -280,20 +312,16 @@ function BpmnCanvas({
     [onSelect]
   );
 
+  // B1 (2026-05-03): screenToFlowPosition rechnet Zoom + Pan korrekt ein.
   const handlePaneClick = useCallback(
     (evt: React.MouseEvent) => {
       if (onPaneClick) {
-        // ReactFlow does not expose the project helper outside its hook, so
-        // approximate with the raw pane offset. The position writer
-        // overlays ELK / user-placed positions on next load; this is good
-        // enough for a first spawn.
-        const bounds = (evt.currentTarget as HTMLElement).getBoundingClientRect();
-        onPaneClick({ x: evt.clientX - bounds.left, y: evt.clientY - bounds.top });
+        onPaneClick(screenToFlowPosition({ x: evt.clientX, y: evt.clientY }));
       } else {
         onSelect(null);
       }
     },
-    [onPaneClick, onSelect]
+    [onPaneClick, onSelect, screenToFlowPosition]
   );
 
   return (
@@ -338,19 +366,25 @@ function BpmnCanvas({
   );
 }
 
-function LandscapeCanvas({
+function LandscapeCanvas(props: CanvasInnerProps) {
+  return (
+    <div className="h-full w-full">
+      <ReactFlowProvider>
+        <LandscapeCanvasInner {...props} />
+      </ReactFlowProvider>
+    </div>
+  );
+}
+
+function LandscapeCanvasInner({
   canvasRef,
   onSelect,
   onPaneClick,
-}: {
-  canvasRef: React.MutableRefObject<CanvasHandles | null>;
-  onSelect: (node: SelectedNode | null) => void;
-  /** v1.1.1 — CR-3: Click-to-Place fuer Landscape-Knoten. */
-  onPaneClick?: (flowPos: { x: number; y: number }) => void;
-}) {
+}: CanvasInnerProps) {
   const api = useApiConfig();
   const sync = useLandscapeSync();
   const { t } = useI18n();
+  const { screenToFlowPosition } = useReactFlow();
   const { nodes, edges, status, isEmpty, onNodesChange, onEdgesChange, onConnect, onEdgesDelete } = sync;
 
   useEffect(() => {
@@ -382,8 +416,9 @@ function LandscapeCanvas({
         if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       },
       validateSource: landscapeJsonValidate,
+      screenToFlow: (clientPos) => screenToFlowPosition(clientPos),
     };
-  }, [sync, canvasRef, api, nodes]);
+  }, [sync, canvasRef, api, nodes, screenToFlowPosition]);
 
   const onNodeClick = useCallback<NodeMouseHandler>(
     (_, node) => {
@@ -398,16 +433,16 @@ function LandscapeCanvas({
   );
 
   // v1.1.1 — CR-3: Click-to-Place fuer Landscape-Knoten.
+  // B1 (2026-05-03): screenToFlowPosition rechnet Zoom + Pan korrekt ein.
   const handlePaneClick = useCallback(
     (evt: React.MouseEvent) => {
       if (onPaneClick) {
-        const bounds = (evt.currentTarget as HTMLElement).getBoundingClientRect();
-        onPaneClick({ x: evt.clientX - bounds.left, y: evt.clientY - bounds.top });
+        onPaneClick(screenToFlowPosition({ x: evt.clientX, y: evt.clientY }));
       } else {
         onSelect(null);
       }
     },
-    [onPaneClick, onSelect]
+    [onPaneClick, onSelect, screenToFlowPosition]
   );
 
   return (
@@ -1092,9 +1127,9 @@ function EditorShell({
   }, [activeTool, handleAddNodeAt, readOnly]);
 
   // Palette-to-canvas Pointer-Events drag-and-drop (iPad-safe). Converts
-  // the pointer's client coordinates into canvas-relative positions by
-  // hit-testing the pane's bounding rect, then dispatches the same
-  // handleAddNodeAt path that click-to-place uses.
+  // the pointer's client coordinates into canvas-relative positions via
+  // the active canvas's screenToFlow helper (Zoom + Pan + Pane-Offset
+  // werden korrekt eingerechnet). B1 fix (2026-05-03).
   const handleSpawnFromPointer = useCallback(
     (type: string, clientPos: { x: number; y: number }) => {
       if (readOnly) return;
@@ -1103,10 +1138,9 @@ function EditorShell({
       // authoritative check; here we just early-out so we don't measure
       // a pane rect for a drop that would be rejected anyway.
       if (!isToolValidForDiagram(diagramType, type as Tool)) return;
-      const pane = document.querySelector(`[data-viso-canvas-pane="${diagramType}"]`);
-      if (!pane) return;
-      const rect = pane.getBoundingClientRect();
-      handleAddNodeAt(type as Tool, { x: clientPos.x - rect.left, y: clientPos.y - rect.top });
+      const screenToFlow = canvasRef.current?.screenToFlow;
+      if (!screenToFlow) return;
+      handleAddNodeAt(type as Tool, screenToFlow(clientPos));
     },
     [readOnly, diagramType, handleAddNodeAt]
   );
